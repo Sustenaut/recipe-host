@@ -1,0 +1,28 @@
+{
+  "name": "recipe-host",
+  "version": "0.1.0",
+  "description": "Host recipes from a GitHub repository: a static site served through jsDelivr, with a master ingredient list and changes made as pull requests.",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "marked": "^18.0.14",
+    "yaml": "^2.9.1"
+  },
+  "type": "module",
+  "bin": {
+    "recipe-host": "bin/recipe-host.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/schryer/recipe-host.git"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

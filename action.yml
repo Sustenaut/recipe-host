@@ -1,0 +1,152 @@
+# recipe-host as a GitHub Action, for a recipe repository's workflows.
+# See README.md ("Set up a recipe repository") for the two workflows that
+# use it. Check out the recipe repository before this step.
+name: recipe-host
+description: Check, build and publish a recipe repository, and turn change requests from the site into pull requests.
+branding:
+  icon: book-open
+  color: orange
+
+inputs:
+  command:
+    description: >
+      check (build everything, publish nothing), publish (build and push
+      the result to the `site` branch, then refresh jsDelivr), or request
+      (turn the triggering issue into a pull request).
+    required: true
+  deploy-key:
+    description: >
+      publish only: an SSH key that may rsync the site's index.html to a web
+      server. Leave empty when nothing serves the page from your own server.
+    default: ''
+  deploy-target:
+    description: 'publish only, with deploy-key: the rsync destination, like deploy@example.org:./'
+    default: ''
+  github-token:
+    description: Token for pushing the `site` branch and opening pull requests.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install recipe-host
+      shell: bash
+      run: npm ci --omit=dev --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"
+
+    - name: Install Typst
+      if: inputs.command != 'request'
+      shell: bash
+      env:
+        TYPST_VERSION: 0.13.1
+      run: |
+        curl -sSfL "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
+          | sudo tar -xJ --strip-components=1 -C /usr/local/bin typst-x86_64-unknown-linux-musl/typst
+        typst --version
+
+    - name: Check and build
+      if: inputs.command != 'request'
+      shell: bash
+      env:
+        ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/boot.js
+      run: node "$GITHUB_ACTION_PATH/bin/recipe-host.js" build --out "$RUNNER_TEMP/site" --engine "$ENGINE"
+
+    # The `site` branch holds only the latest build, as one commit, so the
+    # repository does not grow with every rebuilt card.
+    - name: Push the site branch
+      if: inputs.command == 'publish'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        SOURCE: ${{ github.sha }}
+      run: |
+        cd "$RUNNER_TEMP/site"
+        git init -q -b site
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add -A
+        git commit -q -m "Build of $SOURCE"
+        git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" site
+
+    - name: Refresh jsDelivr
+      if: inputs.command == 'publish'
+      shell: bash
+      env:
+        REPO: ${{ github.repository }}
+      run: |
+        # The site reads the newest commit directly; this refreshes the
+        # @site branch URLs it falls back to.
+        cd "$RUNNER_TEMP/site"
+        find . -type f ! -path './.git/*' | sed 's|^\./||' | while read -r file; do
+          curl -sS -o /dev/null -w "%{http_code} $file\n" "https://purge.jsdelivr.net/gh/${REPO}@site/${file}" || true
+        done
+
+    - name: Deploy index.html
+      if: inputs.command == 'publish' && inputs.deploy-key != ''
+      shell: bash
+      env:
+        DEPLOY_KEY: ${{ inputs.deploy-key }}
+        TARGET: ${{ inputs.deploy-target }}
+      run: |
+        host="${TARGET#*@}"; host="${host%%:*}"
+        install -m 700 -d ~/.ssh
+        printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/recipe_host_deploy
+        chmod 600 ~/.ssh/recipe_host_deploy
+        ssh-keyscan -t ed25519 "$host" >> ~/.ssh/known_hosts
+        # Only index.html is served from there; --delete clears anything
+        # an earlier site left behind.
+        mkdir -p "$RUNNER_TEMP/web"
+        cp "$RUNNER_TEMP/site/index.html" "$RUNNER_TEMP/web/"
+        rsync -rlvz --checksum --delete -e "ssh -i ~/.ssh/recipe_host_deploy" "$RUNNER_TEMP/web/" "$TARGET"
+
+    - name: Apply the request
+      id: request
+      if: inputs.command == 'request'
+      shell: bash
+      env:
+        ISSUE: ${{ toJSON(github.event.issue) }}
+      run: |
+        printf '%s' "$ISSUE" > "$RUNNER_TEMP/issue.json"
+        node "$GITHUB_ACTION_PATH/bin/recipe-host.js" request --issue "$RUNNER_TEMP/issue.json"
+
+    - name: Open the pull request
+      if: inputs.command == 'request' && steps.request.outputs.status == 'ok'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        BRANCH: ${{ steps.request.outputs.branch }}
+        TITLE: ${{ steps.request.outputs.title }}
+        BODY: ${{ steps.request.outputs.body }}
+        AUTHOR: ${{ github.event.issue.user.login }}
+        AUTHOR_ID: ${{ github.event.issue.user.id }}
+        NUMBER: ${{ github.event.issue.number }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git switch -c "$BRANCH"
+        git add -A
+        git commit -q -m "$TITLE" -m "Requested in #${NUMBER}." -m "Co-authored-by: ${AUTHOR} <${AUTHOR_ID}+${AUTHOR}@users.noreply.github.com>"
+        git push -q --force origin "$BRANCH"
+        # Editing the issue re-runs the request and updates its pull request.
+        if url=$(gh pr view "$BRANCH" --json url,state -q 'select(.state == "OPEN") | .url' 2>/dev/null) && [ -n "$url" ]; then
+          gh pr edit "$BRANCH" --title "$TITLE" --body "$BODY"
+          gh issue comment "$NUMBER" --body "Updated ${url} to match the edited request."
+        else
+          url=$(gh pr create --head "$BRANCH" --title "$TITLE" --body "$BODY")
+          gh issue comment "$NUMBER" --body "Opened ${url} with this change. It closes this issue when it is merged."
+        fi
+
+    - name: Explain why there is no pull request
+      if: inputs.command == 'request' && steps.request.outputs.status == 'error'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        MESSAGE: ${{ steps.request.outputs.message }}
+        NUMBER: ${{ github.event.issue.number }}
+      run: |
+        printf 'This request could not be applied, so no pull request was opened:\n\n%s\n\nEdit the request block in the issue to try again.\n' "$MESSAGE" > "$RUNNER_TEMP/comment.md"
+        gh issue comment "$NUMBER" --body-file "$RUNNER_TEMP/comment.md"
