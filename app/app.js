@@ -39,21 +39,28 @@ function setUpMarked() {
   });
 }
 
-// The data is read from the newest commit of the `site` branch: a commit URL
-// on jsDelivr never changes, so a new build shows at once. The branch URL is
-// the fallback when GitHub's API can't be reached. A local preview (`serve`)
-// sets `config.data` for its own repository.
-async function dataBase() {
-  if (config.data && repo === config.repo) return new URL(config.data, location.href).href;
-  let ref = 'site';
+// The newest commit of the `site` branch, or null when GitHub's API can't be
+// reached (offline, or rate limited).
+async function latestSite() {
   try {
     const res = await fetch(`https://api.github.com/repos/${repo}/commits/site`, { headers: { Accept: 'application/vnd.github.sha' } });
     const sha = res.ok ? (await res.text()).trim() : '';
-    if (/^[0-9a-f]{40}$/.test(sha)) ref = sha;
+    return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
   } catch {
-    // Offline or rate limited: use the branch.
+    return null;
   }
-  return `https://cdn.jsdelivr.net/gh/${repo}@${ref}/`;
+}
+
+const atCommit = (sha) => `https://cdn.jsdelivr.net/gh/${repo}@${sha}/`;
+
+// Where the data is read from. A published page names the commit it was
+// deployed with (`config.data`), and a local preview names its own folder.
+// Otherwise it is the newest commit of the `site` branch, or the branch
+// itself when GitHub's API can't be reached. A commit URL on jsDelivr never
+// changes, so it is cached for good.
+async function dataBase() {
+  if (config.data && repo === config.repo) return new URL(config.data, location.href).href;
+  return atCommit((await latestSite()) ?? 'site');
 }
 
 const normalize = (s) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -104,6 +111,28 @@ document.addEventListener('alpine:init', () => {
       }
       window.addEventListener('hashchange', () => this.go());
       this.go();
+      this.refresh();
+    },
+
+    // A page pinned to one commit shows it at once. The page itself may come
+    // from the browser's cache, though, so check for a newer publish and
+    // switch to it.
+    async refresh() {
+      const pinned = this.base.match(/@([0-9a-f]{40})\/$/)?.[1];
+      if (!pinned) return;
+      const sha = await latestSite();
+      if (!sha || sha === pinned) return;
+      try {
+        const base = atCommit(sha);
+        const res = await fetch(new URL('index.json', base));
+        if (!res.ok) return;
+        this.index = await res.json();
+        this.base = base;
+        // Without go(), so nothing typed or ticked meanwhile is lost.
+        if (this.recipe) this.recipe = await this.fetchJson(`recipes/${this.recipe.slug}.json`);
+      } catch {
+        // Keep showing the pinned commit.
+      }
     },
 
     async fetchJson(path) {

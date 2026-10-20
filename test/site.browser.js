@@ -9,6 +9,8 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright';
 import { buildSite } from '../lib/build.js';
+import { pageHtml } from '../lib/page.js';
+import { loadConfig } from '../lib/repo.js';
 import { LOCAL_PAGE, serve } from '../lib/serve.js';
 
 const FIXTURE = new URL('./fixtures/repo', import.meta.url).pathname;
@@ -161,11 +163,11 @@ test('an ingredient page lists its uses and requests a substitution for the tick
   assert.deepEqual(request, { action: 'add-substitution', ingredient: 'coriander', recipes: ['herb-salad'], with: 'onion', note: 'Use the same weight of roasted onions.' });
 });
 
-// Another repository's published data, served the way GitHub and jsDelivr
-// would: the fixture's build under a different repository and title.
-async function publish(repoName, title) {
-  const sha = 'a'.repeat(40);
-  await page.route(`https://api.github.com/repos/${repoName}/commits/site`, (route) => route.fulfill({ body: sha }));
+// A repository's published data, served the way GitHub and jsDelivr would:
+// the fixture's build under the given repository and title, at `sha`, which
+// GitHub reports as the newest commit unless `latest` says otherwise.
+async function publish(repoName, title, sha = 'a'.repeat(40), latest = sha) {
+  await page.route(`https://api.github.com/repos/${repoName}/commits/site`, (route) => route.fulfill({ body: latest }));
   await page.route(`https://cdn.jsdelivr.net/gh/${repoName}@${sha}/**`, (route) => {
     const file = new URL(route.request().url()).pathname.split(`@${sha}/`)[1];
     if (file !== 'index.json') return route.fulfill({ path: path.join(out, file) });
@@ -203,6 +205,29 @@ test('?repo= naming a repository with nothing published says so', async () => {
   assert.match(await page.textContent('article'), /Found no published recipes in nobody\/nothing\./);
   await page.unrouteAll();
   errors.splice(before); // the browser logs the 404s themselves
+});
+
+test('a page pinned to a commit shows it, then switches to a newer publish', async () => {
+  const [old, newer] = ['a'.repeat(40), 'b'.repeat(40)];
+  const pinned = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${old}/` });
+  fs.writeFileSync(path.join(out, 'pinned.html'), pinned);
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await publish('example/recipes', 'Old recipes', old);
+  await publish('example/recipes', 'New recipes', newer);
+  // Registered last, so it answers first: GitHub reports the newer commit
+  // only once the pinned one is showing.
+  await page.route('https://api.github.com/repos/example/recipes/commits/site', async (route) => {
+    await held;
+    return route.fulfill({ body: newer });
+  });
+  await page.goto('about:blank');
+  await page.goto(`${base}pinned.html#/`);
+  await page.waitForSelector('.card');
+  assert.equal(await page.textContent('.pure-menu-heading'), 'Old recipes');
+  release();
+  await eventually(() => page.textContent('.pure-menu-heading'), 'New recipes');
+  await page.unrouteAll();
 });
 
 test('no page logged an error', () => {

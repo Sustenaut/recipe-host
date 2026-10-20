@@ -57,6 +57,7 @@ runs:
     # The `site` branch holds only the latest build, as one commit, so the
     # repository does not grow with every rebuilt card.
     - name: Push the site branch
+      id: site
       if: inputs.command == 'publish'
       shell: bash
       env:
@@ -71,6 +72,21 @@ runs:
         git add -A
         git commit -q -m "Build of $SOURCE"
         git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" site
+        echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+    # jsDelivr fetches a commit from GitHub the first time anyone asks for
+    # it, which can take many seconds. Asking for every file here, before
+    # the page that names this commit is deployed, means no visitor waits.
+    - name: Warm jsDelivr
+      if: inputs.command == 'publish'
+      shell: bash
+      env:
+        DATA: https://cdn.jsdelivr.net/gh/${{ github.repository }}@${{ steps.site.outputs.sha }}/
+        ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/
+      run: |
+        cd "$RUNNER_TEMP/site"
+        { find . -type f ! -path './.git/*' | sed "s|^\./|$DATA|"; printf '%s\n' "${ENGINE}app.js" "${ENGINE}style.css"; } \
+          | xargs -P 8 -I{} curl -sS -o /dev/null --retry 5 --retry-all-errors --max-time 120 -w "%{http_code} {}\n" {} || true
 
     - name: Refresh jsDelivr
       if: inputs.command == 'publish'
@@ -91,6 +107,8 @@ runs:
       env:
         DEPLOY_KEY: ${{ inputs.deploy-key }}
         TARGET: ${{ inputs.deploy-target }}
+        DATA: https://cdn.jsdelivr.net/gh/${{ github.repository }}@${{ steps.site.outputs.sha }}/
+        ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/
       run: |
         host="${TARGET#*@}"; host="${host%%:*}"
         install -m 700 -d ~/.ssh
@@ -98,9 +116,11 @@ runs:
         chmod 600 ~/.ssh/recipe_host_deploy
         ssh-keyscan -t ed25519 "$host" >> ~/.ssh/known_hosts
         # Only index.html is served from there; --delete clears anything
-        # an earlier site left behind.
+        # an earlier site left behind. This copy names the commit just
+        # published, so it loads without asking GitHub for the newest one
+        # and every URL it reads stays cacheable for good.
         mkdir -p "$RUNNER_TEMP/web"
-        cp "$RUNNER_TEMP/site/index.html" "$RUNNER_TEMP/web/"
+        node "$GITHUB_ACTION_PATH/bin/recipe-host.js" page --out "$RUNNER_TEMP/web/index.html" --engine "$ENGINE" --data "$DATA"
         rsync -rlvz --checksum --delete -e "ssh -i ~/.ssh/recipe_host_deploy" "$RUNNER_TEMP/web/" "$TARGET"
 
     - name: Apply the request
