@@ -13,6 +13,6 @@ jobs:
   # with the SONAR_TOKEN secret, SonarQube Cloud. `passed` is the one check
   # a ruleset requires.
   ci:
-    uses: schryer/pubkit/.github/workflows/node-ci.yml@v0.11.2
+    uses: schryer/pubkit/.github/workflows/node-ci.yml@v0.12.0
     with: { browser-test: npm run test:browser }
     secrets: inherit
