@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { cardData } from '../lib/build.js';
+import { cardData, typstPath } from '../lib/build.js';
 import { pageHtml } from '../lib/page.js';
 import { linkRecipe } from '../lib/link.js';
 import { parseIngredientLine, parseRecipe, parseIngredient } from '../lib/parse.js';
@@ -228,4 +228,16 @@ test('a page pinned to one data commit preloads its index and skips asking GitHu
   const latest = pageHtml(config);
   assert.doesNotMatch(latest, /rel="preload"/);
   assert.match(latest, /"data":null/);
+});
+
+test('typst is found by absolute path, from $TYPST or else PATH, and never from a relative PATH entry', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typst-'));
+  const bin = path.join(dir, process.platform === 'win32' ? 'typst.exe' : 'typst');
+  fs.writeFileSync(bin, '');
+  fs.chmodSync(bin, 0o755);
+  assert.equal(typstPath({ PATH: ['relative', dir].join(path.delimiter) }), bin);
+  assert.equal(typstPath({ TYPST: bin, PATH: '' }), bin);
+  assert.equal(typstPath({ TYPST: 'typst', PATH: dir }), null);
+  assert.equal(typstPath({ PATH: 'relative' }), null);
+  fs.rmSync(dir, { recursive: true, force: true });
 });

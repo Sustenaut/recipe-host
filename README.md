@@ -146,8 +146,8 @@ recipe-host check                              # every rule in FORMAT.md
 recipe-host serve                              # preview at http://localhost:8080/
 ```
 
-`build` and `serve` make the cards when `typst` is on the path, and skip
-them otherwise.
+`build` and `serve` make the cards when they find `typst` (the absolute
+path in `$TYPST`, or else on the path), and skip them otherwise.
 
 ## Working on recipe-host
 
