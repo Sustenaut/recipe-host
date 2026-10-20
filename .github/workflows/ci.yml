@@ -1,0 +1,18 @@
+name: ci
+
+on:
+  push: { branches: [main] }
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # pubkit's shared Node CI: the locked dependencies without their install
+  # scripts, pubkit sync --check, npm test, the Playwright browser tests and,
+  # with the SONAR_TOKEN secret, SonarQube Cloud. `passed` is the one check
+  # a ruleset requires.
+  ci:
+    uses: schryer/pubkit/.github/workflows/node-ci.yml@v0.12.0
+    with: { browser-test: npm run test:browser }
+    secrets: inherit
