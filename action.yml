@@ -58,6 +58,7 @@ runs:
       shell: bash
       env:
         ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/
+        TYPST: /usr/local/bin/typst
       run: node "$GITHUB_ACTION_PATH/bin/recipe-host.js" build --out "$RUNNER_TEMP/site" --engine "$ENGINE"
 
     # The `site` branch holds only the latest build, as one commit, so the
