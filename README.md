@@ -6,9 +6,6 @@ the site is a single static page that loads everything through
 [jsDelivr](https://www.jsdelivr.com/); and every change, including the ones
 made from the site's own buttons, arrives as a pull request.
 
-It serves [schryer.eu/recipes](https://schryer.eu/recipes/) from
-[schryer/recipes](https://github.com/schryer/recipes).
-
 ## What the site does
 
 - **Recipes**, by category, searchable by title, tag and ingredient. Each has
