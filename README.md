@@ -53,9 +53,17 @@ your web server: index.html ──▶ app (this repo, at a pinned tag, via jsDel
 - **`cards/recipe-card.typ`** is the A5 card, set with [Typst](https://typst.app).
 - **`action.yml`** runs all of it in GitHub Actions.
 
-The site reads the newest commit of the `site` branch (it asks GitHub's API
-for the commit, then loads that commit from jsDelivr), so a merged change
-shows up as soon as its build finishes, with no cache to wait out.
+The page deployed to your server names the exact `site` commit it was
+published with and loads everything from jsDelivr at that commit and at
+pinned library versions. None of those URLs ever change, so browsers and
+the CDN cache them for good; publishing warms jsDelivr with the new commit
+and then deploys a page that names it, which is the only invalidation
+needed. The copy of the page on the `site` branch (for GitHub Pages and
+other hosts) instead asks GitHub's API for the newest commit when it opens.
+
+An open page checks GitHub for a newer publish when it opens and then every
+hour. When there is one, the bell in the header lights up and a *Reload*
+button appears; it loads the new recipes in place.
 
 Any recipe site can show any other public recipe repository: add
 `?repo=owner/name` to its address, as in

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { cardData } from '../lib/build.js';
+import { pageHtml } from '../lib/page.js';
 import { linkRecipe } from '../lib/link.js';
 import { parseIngredientLine, parseRecipe, parseIngredient } from '../lib/parse.js';
 import { buildIndex, loadRepo } from '../lib/repo.js';
@@ -216,4 +217,15 @@ test('link adds ingredient links by name and alias and reports the rest', () => 
   assert.deepEqual(result.linked, ['1 bunch [cilantro](/ingredients/coriander.md), leaves picked', '2 red [onions](/ingredients/onion.md), sliced']);
   assert.deepEqual(result.unmatched, ['1 lemon']);
   assert.match(read(root, 'recipes/salads/herb-salad.md'), /- 1 bunch \[cilantro\]\(\/ingredients\/coriander\.md\), leaves picked/);
+});
+
+test('a page pinned to one data commit preloads its index and skips asking GitHub', () => {
+  const config = { title: 'R & D', description: '', repo: 'o/r', branch: 'main' };
+  const pinned = pageHtml(config, { data: 'https://cdn.jsdelivr.net/gh/o/r@abc/' });
+  assert.match(pinned, /<link rel="preload" href="https:\/\/cdn.jsdelivr.net\/gh\/o\/r@abc\/index.json" as="fetch" crossorigin>/);
+  assert.match(pinned, /"data":"https:\/\/cdn.jsdelivr.net\/gh\/o\/r@abc\/"/);
+  assert.match(pinned, /<title>R &amp; D<\/title>/);
+  const latest = pageHtml(config);
+  assert.doesNotMatch(latest, /rel="preload"/);
+  assert.match(latest, /"data":null/);
 });

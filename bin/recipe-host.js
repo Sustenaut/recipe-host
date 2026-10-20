@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { buildSite } from '../lib/build.js';
 import { linkRecipe } from '../lib/link.js';
-import { loadRepo } from '../lib/repo.js';
+import { loadConfig, loadRepo } from '../lib/repo.js';
+import { pageHtml } from '../lib/page.js';
 import { applyRequest, readRequest, RequestError } from '../lib/requests.js';
 import { LOCAL_PAGE, serve } from '../lib/serve.js';
 
@@ -15,6 +16,9 @@ const USAGE = `Usage: recipe-host <command> [options]
   check                    check every recipe and ingredient
   build [--out DIR]        build the site data (default _site) and cards
         [--engine URL]     the app/ folder index.html loads from (default: this version on jsDelivr)
+  page --out FILE          write only index.html, for the web server
+       [--engine URL]     as for build
+       [--data URL]       read the data from here (e.g. one commit on jsDelivr) instead of asking GitHub
   link FILE...             link a recipe's plain ingredient lines to the ingredient list
   request --issue FILE     apply the request in a GitHub issue (JSON from the API)
   serve [--port N]         build, then preview the site at http://localhost:N
@@ -64,6 +68,18 @@ switch (command) {
     const repo = buildSite(root, out, options);
     report(repo);
     process.exit(repo.errors.length ? 1 : 0);
+  }
+  case 'page': {
+    if (!args.out) {
+      console.error('page needs --out FILE');
+      process.exit(2);
+    }
+    const page = {};
+    if (args.engine) page.engine = args.engine;
+    if (args.data) page.data = args.data;
+    fs.mkdirSync(path.dirname(path.resolve(args.out)), { recursive: true });
+    fs.writeFileSync(args.out, pageHtml(loadConfig(root), page));
+    process.exit(0);
   }
   case 'link': {
     if (!rest.length) {

@@ -39,21 +39,31 @@ function setUpMarked() {
   });
 }
 
-// The data is read from the newest commit of the `site` branch: a commit URL
-// on jsDelivr never changes, so a new build shows at once. The branch URL is
-// the fallback when GitHub's API can't be reached. A local preview (`serve`)
-// sets `config.data` for its own repository.
-async function dataBase() {
-  if (config.data && repo === config.repo) return new URL(config.data, location.href).href;
-  let ref = 'site';
+// The newest commit of the `site` branch, or null when GitHub's API can't be
+// reached (offline, or rate limited).
+async function latestSite() {
   try {
     const res = await fetch(`https://api.github.com/repos/${repo}/commits/site`, { headers: { Accept: 'application/vnd.github.sha' } });
     const sha = res.ok ? (await res.text()).trim() : '';
-    if (/^[0-9a-f]{40}$/.test(sha)) ref = sha;
+    return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
   } catch {
-    // Offline or rate limited: use the branch.
+    return null;
   }
-  return `https://cdn.jsdelivr.net/gh/${repo}@${ref}/`;
+}
+
+// How often an open page checks for a newer publish.
+const UPDATE_EVERY = 60 * 60 * 1000;
+
+const atCommit = (sha) => `https://cdn.jsdelivr.net/gh/${repo}@${sha}/`;
+
+// Where the data is read from. A published page names the commit it was
+// deployed with (`config.data`), and a local preview names its own folder.
+// Otherwise it is the newest commit of the `site` branch, or the branch
+// itself when GitHub's API can't be reached. A commit URL on jsDelivr never
+// changes, so it is cached for good.
+async function dataBase() {
+  if (config.data && repo === config.repo) return new URL(config.data, location.href).href;
+  return atCommit((await latestSite()) ?? 'site');
 }
 
 const normalize = (s) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -104,6 +114,50 @@ document.addEventListener('alpine:init', () => {
       }
       window.addEventListener('hashchange', () => this.go());
       this.go();
+      this.watchForUpdates();
+    },
+
+    // ---- newer publishes
+    // A page reads one commit of the `site` branch for as long as it is open.
+    // Every hour, and when the tab comes back after an hour away, it asks
+    // GitHub for the newest commit; if there is a newer one, the bell in the
+    // header lights up and the reload button switches to it. The page itself
+    // may come from the browser's cache, so it also checks once on opening.
+    update: null,
+    checkedAt: 0,
+
+    get pinned() { return this.base?.match(/@([0-9a-f]{40})\/$/)?.[1] ?? null; },
+
+    watchForUpdates() {
+      if (!this.pinned) return;
+      const check = () => { if (Date.now() - this.checkedAt >= UPDATE_EVERY) void this.checkForUpdate(); };
+      // checkForUpdate() handles its own errors, so nothing waits for it.
+      void this.checkForUpdate();
+      setInterval(check, UPDATE_EVERY);
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && check());
+    },
+
+    async checkForUpdate() {
+      this.checkedAt = Date.now();
+      const sha = await latestSite();
+      // Offline or rate limited: keep what the last check found.
+      if (sha) this.update = sha === this.pinned ? null : sha;
+    },
+
+    // Switches to the newer publish without go(), so nothing typed or
+    // ticked meanwhile is lost.
+    async applyUpdate() {
+      const base = atCommit(this.update);
+      try {
+        const res = await fetch(new URL('index.json', base));
+        if (!res.ok) throw new Error(`Could not load the new recipes (${res.status})`);
+        this.index = await res.json();
+        this.base = base;
+        this.update = null;
+        if (this.recipe) this.recipe = await this.fetchJson(`recipes/${this.recipe.slug}.json`);
+      } catch {
+        // Keep showing this commit; the bell stays lit to try again.
+      }
     },
 
     async fetchJson(path) {
