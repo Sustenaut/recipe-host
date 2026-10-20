@@ -60,6 +60,11 @@ The site reads the newest commit of the `site` branch (it asks GitHub's API
 for the commit, then loads that commit from jsDelivr), so a merged change
 shows up as soon as its build finishes, with no cache to wait out.
 
+Any recipe site can show any other public recipe repository: add
+`?repo=owner/name` to its address, as in
+`https://schryer.eu/recipes/?repo=friend/cookbook`. The page loads that
+repository's `site` branch instead, and its buttons open requests there.
+
 ## Set up a recipe repository
 
 1. Lay it out as [FORMAT.md](FORMAT.md) describes, with a `recipe-host.yml`.
