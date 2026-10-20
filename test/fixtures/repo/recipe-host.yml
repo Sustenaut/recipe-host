@@ -1,0 +1,4 @@
+title: Test recipes
+description: The fixture the browser test runs against.
+repo: example/recipes
+categories: [sauces, salads]

@@ -1,0 +1,4 @@
+---
+name: Coriander
+aliases: [cilantro]
+---
