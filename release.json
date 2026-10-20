@@ -22,5 +22,6 @@
       "app/app.js",
       "app/style.css"
     ]
-  }
+  },
+  "key": "pub:sha2-256:xytkvt7dua7tvt6vydqu22rlr53vttuxh77sholft4p7sx4qrqjq"
 }
