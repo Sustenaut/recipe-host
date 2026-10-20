@@ -16,3 +16,15 @@ jobs:
     uses: schryer/pubkit/.github/workflows/node-ci.yml@v0.12.0
     with: { browser-test: npm run test:browser }
     secrets: inherit
+
+  # The shared release workflow: on a pull request, a code change records
+  # what it changes with `pubrel add`, and a release is the bump those rows
+  # require, published; on main, a published version is tagged and
+  # released, and jsDelivr is warmed at the new tag. CI signs nothing; the
+  # release was signed when the package publet was published.
+  release:
+    needs: ci
+    uses: schryer/pubrel/.github/workflows/release.yml@v0.5.4
+    with: { pubrel-version: v0.5.4 }
+    permissions:
+      contents: write

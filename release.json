@@ -1,0 +1,27 @@
+{
+  "code": [
+    "app/",
+    "bin/",
+    "cards/",
+    "lib/",
+    "action.yml",
+    "package.json",
+    "package-lock.json"
+  ],
+  "corpus": "corpus",
+  "manifest": {
+    "kind": "npm",
+    "path": "package.json"
+  },
+  "name": "recipe-host",
+  "package": "pkg.recipe-host",
+  "tag": "PKG-RECHOS-10-2026",
+  "install": "uses: schryer/recipe-host@{tag}",
+  "jsdelivr": {
+    "files": [
+      "app/app.js",
+      "app/style.css"
+    ]
+  },
+  "key": "pub:sha2-256:xytkvt7dua7tvt6vydqu22rlr53vttuxh77sholft4p7sx4qrqjq"
+}
