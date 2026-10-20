@@ -61,6 +61,10 @@ and then deploys a page that names it, which is the only invalidation
 needed. The copy of the page on the `site` branch (for GitHub Pages and
 other hosts) instead asks GitHub's API for the newest commit when it opens.
 
+An open page checks GitHub for a newer publish when it opens and then every
+hour. When there is one, the bell in the header lights up and a *Reload*
+button appears; it loads the new recipes in place.
+
 Any recipe site can show any other public recipe repository: add
 `?repo=owner/name` to its address, as in
 `https://schryer.eu/recipes/?repo=friend/cookbook`. The page loads that

@@ -207,27 +207,40 @@ test('?repo= naming a repository with nothing published says so', async () => {
   errors.splice(before); // the browser logs the 404s themselves
 });
 
-test('a page pinned to a commit shows it, then switches to a newer publish', async () => {
+test('a pinned page lights the bell when a newer publish is out, and reloads into it', async () => {
   const [old, newer] = ['a'.repeat(40), 'b'.repeat(40)];
   const pinned = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${old}/` });
   fs.writeFileSync(path.join(out, 'pinned.html'), pinned);
-  let release;
-  const held = new Promise((resolve) => { release = resolve; });
   await publish('example/recipes', 'Old recipes', old);
   await publish('example/recipes', 'New recipes', newer);
-  // Registered last, so it answers first: GitHub reports the newer commit
-  // only once the pinned one is showing.
-  await page.route('https://api.github.com/repos/example/recipes/commits/site', async (route) => {
-    await held;
-    return route.fulfill({ body: newer });
-  });
+  // Registered last, so it answers first: GitHub reports the pinned commit
+  // until `latest` changes.
+  let latest = old;
+  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => route.fulfill({ body: latest }));
+  await page.clock.install();
   await page.goto('about:blank');
-  await page.goto(`${base}pinned.html#/`);
-  await page.waitForSelector('.card');
+  await page.goto(`${base}pinned.html#/recipe/salsa-verde`);
+  await page.waitForSelector('.steps li');
+  await page.locator('.bell').waitFor();
+  assert.equal(await page.isVisible('.bell.active'), false);
+  assert.equal(await page.isVisible('.reload'), false);
+  latest = newer;
+  await page.clock.runFor(30 * 60 * 1000);
+  assert.equal(await page.isVisible('.bell.active'), false);
+  await page.clock.runFor(30 * 60 * 1000);
+  await page.locator('.bell.active').waitFor();
   assert.equal(await page.textContent('.pure-menu-heading'), 'Old recipes');
-  release();
+  await page.click('.reload');
   await eventually(() => page.textContent('.pure-menu-heading'), 'New recipes');
+  assert.equal(await page.isVisible('.bell.active'), false);
+  assert.equal(await page.isVisible('.reload'), false);
+  await page.waitForSelector('.steps li');
   await page.unrouteAll();
+});
+
+test('a page that reads the newest commit has no bell', async () => {
+  await visit('#/', '.card');
+  assert.equal(await page.isVisible('.bell'), false);
 });
 
 test('no page logged an error', () => {

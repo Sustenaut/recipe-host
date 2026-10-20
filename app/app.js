@@ -51,6 +51,9 @@ async function latestSite() {
   }
 }
 
+// How often an open page checks for a newer publish.
+const UPDATE_EVERY = 60 * 60 * 1000;
+
 const atCommit = (sha) => `https://cdn.jsdelivr.net/gh/${repo}@${sha}/`;
 
 // Where the data is read from. A published page names the commit it was
@@ -111,28 +114,49 @@ document.addEventListener('alpine:init', () => {
       }
       window.addEventListener('hashchange', () => this.go());
       this.go();
-      // refresh() handles its own errors, so the page need not wait for it.
-      void this.refresh();
+      this.watchForUpdates();
     },
 
-    // A page pinned to one commit shows it at once. The page itself may come
-    // from the browser's cache, though, so check for a newer publish and
-    // switch to it.
-    async refresh() {
-      const pinned = this.base.match(/@([0-9a-f]{40})\/$/)?.[1];
-      if (!pinned) return;
+    // ---- newer publishes
+    // A page reads one commit of the `site` branch for as long as it is open.
+    // Every hour, and when the tab comes back after an hour away, it asks
+    // GitHub for the newest commit; if there is a newer one, the bell in the
+    // header lights up and the reload button switches to it. The page itself
+    // may come from the browser's cache, so it also checks once on opening.
+    update: null,
+    checkedAt: 0,
+
+    get pinned() { return this.base?.match(/@([0-9a-f]{40})\/$/)?.[1] ?? null; },
+
+    watchForUpdates() {
+      if (!this.pinned) return;
+      const check = () => { if (Date.now() - this.checkedAt >= UPDATE_EVERY) void this.checkForUpdate(); };
+      // checkForUpdate() handles its own errors, so nothing waits for it.
+      void this.checkForUpdate();
+      setInterval(check, UPDATE_EVERY);
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && check());
+    },
+
+    async checkForUpdate() {
+      this.checkedAt = Date.now();
       const sha = await latestSite();
-      if (!sha || sha === pinned) return;
+      // Offline or rate limited: keep what the last check found.
+      if (sha) this.update = sha === this.pinned ? null : sha;
+    },
+
+    // Switches to the newer publish without go(), so nothing typed or
+    // ticked meanwhile is lost.
+    async applyUpdate() {
+      const base = atCommit(this.update);
       try {
-        const base = atCommit(sha);
         const res = await fetch(new URL('index.json', base));
-        if (!res.ok) return;
+        if (!res.ok) throw new Error(`Could not load the new recipes (${res.status})`);
         this.index = await res.json();
         this.base = base;
-        // Without go(), so nothing typed or ticked meanwhile is lost.
+        this.update = null;
         if (this.recipe) this.recipe = await this.fetchJson(`recipes/${this.recipe.slug}.json`);
       } catch {
-        // Keep showing the pinned commit.
+        // Keep showing this commit; the bell stays lit to try again.
       }
     },
 

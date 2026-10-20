@@ -37,6 +37,17 @@
       <li class="pure-menu-item" :class="{ 'pure-menu-selected': !route.view.startsWith('ingredient') }"><a href="#/" class="pure-menu-link" :aria-current="route.view.startsWith('ingredient') ? null : 'page'">Recipes</a></li>
       <li class="pure-menu-item" :class="{ 'pure-menu-selected': route.view.startsWith('ingredient') }"><a href="#/ingredients" class="pure-menu-link" :aria-current="route.view.startsWith('ingredient') ? 'page' : null">Ingredients</a></li>
     </ul>
+    <div class="updates" x-show="pinned" x-cloak>
+      <span class="bell" :class="{ active: update }" role="status"
+            :title="update ? 'Newer recipes have been published' : 'Checking hourly for newer recipes'"
+            :aria-label="update ? 'Newer recipes have been published' : 'No newer recipes yet'">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      </span>
+      <button type="button" class="pure-button reload" x-show="update" @click="applyUpdate()" title="Load the newer recipes">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+        Reload
+      </button>
+    </div>
   </nav>
 </header>
 
