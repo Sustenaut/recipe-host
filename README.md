@@ -161,9 +161,23 @@ node bin/recipe-host.js serve --root ../recipes
 `npx playwright install chromium` once first).
 
 See [AGENTS.md](AGENTS.md) for how the pieces fit and what to keep true when
-changing them. Releases are git tags (`v0.1.0`); a recipe repository pins one
-in its workflows, and its built page loads the app from that tag, so a
-release changes nothing until a site moves to it.
+changing them.
+
+### Releasing
+
+Releases are cut with [pubrel](https://github.com/schryer/pubrel). Each
+pull request that changes what users run records the change with
+`pubrel add`, and the version follows from those rows. To release, on a
+clean, up-to-date `main`:
+
+```sh
+pubrel prepare   # signs the release record and opens a release/vX.Y.Z pull request
+```
+
+Merging that pull request is the release: the release job in CI tags it,
+creates the GitHub release, and warms jsDelivr at the new tag. A recipe
+repository pins a tag in its workflows, so a release changes nothing until
+a site moves to it; Dependabot opens that pull request.
 
 ## Licence
 

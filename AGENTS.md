@@ -7,8 +7,12 @@ Read README.md first for what this is. This file is for changing it.
 - **The format is a contract.** FORMAT.md describes what recipe
   repositories hold, and `lib/parse.js` and `lib/repo.js` implement it. A
   change to one changes the other, in the same pull request, with a test.
-  Recipe repositories pin a release, so a breaking format change needs a
-  new minor version and a note in the release on how to migrate.
+  Recipe repositories pin a release, so a breaking format change is
+  recorded as `changed` (below) and says in the row how to migrate.
+- **Every pull request that changes what users run records it** with
+  `pubrel add CATEGORY "what changed"` (`added`, `fixed`, `changed`,
+  `removed`, `security`, or `internal`), and the release job in CI fails
+  one that doesn't. The rows decide the next version; nobody picks it.
 - **Every check reports a sentence an author can act on**, naming the file
   and saying what to do, and `loadRepo` collects problems rather than
   stopping at the first.
