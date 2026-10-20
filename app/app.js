@@ -26,7 +26,7 @@ function setUpMarked() {
         const ing = href.match(/^\/ingredients\/([a-z0-9-]+)\.md$/);
         if (ing) return `<a class="ingredient-link" href="#/ingredient/${ing[1]}">${text}</a>`;
         if (/^https?:/.test(href)) return `<a href="${encodeURI(href)}" rel="noopener">${text}</a>`;
-        const recipe = href.match(/([a-z0-9-]+)\.md$/);
+        const recipe = href.split('/').pop().match(/^([a-z0-9-]+)\.md$/);
         return recipe ? `<a href="#/recipe/${recipe[1]}">${text}</a>` : text;
       },
       image: ({ href, text }) => (/^https?:/.test(href) ? `<img src="${encodeURI(href)}" alt="">` : ''),
@@ -112,8 +112,8 @@ document.addEventListener('alpine:init', () => {
           : `Found no published recipes in ${repo}. It needs to be a public GitHub repository whose recipe-host workflow has run (${err.message}).`;
         return;
       }
-      window.addEventListener('hashchange', () => this.go());
-      this.go();
+      window.addEventListener('hashchange', () => this.show());
+      this.show();
       this.watchForUpdates();
     },
 
@@ -164,6 +164,11 @@ document.addEventListener('alpine:init', () => {
       const res = await fetch(this.dataUrl(path));
       if (!res.ok) throw new Error(`Could not load ${path} (${res.status})`);
       return res.json();
+    },
+
+    // go() for an event handler, showing any failure instead of dropping it.
+    show() {
+      this.go().catch((err) => { this.error = err.message; });
     },
 
     async go() {

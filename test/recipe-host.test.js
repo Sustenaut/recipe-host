@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { cardData, typstPath } from '../lib/build.js';
 import { pageHtml } from '../lib/page.js';
 import { linkRecipe } from '../lib/link.js';
-import { parseIngredientLine, parseRecipe, parseIngredient } from '../lib/parse.js';
+import { parseIngredientLine, parseRecipe, parseIngredient, plainText, slugify, splitSections } from '../lib/parse.js';
 import { buildIndex, loadRepo } from '../lib/repo.js';
 import { applyRequest, readRequest, RequestError } from '../lib/requests.js';
 
@@ -240,4 +240,23 @@ test('typst is found by absolute path, from $TYPST or else PATH, and never from 
   assert.equal(typstPath({ TYPST: 'typst', PATH: dir }), null);
   assert.equal(typstPath({ PATH: 'relative' }), null);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('the Markdown patterns keep their meaning and stay fast on hostile text', () => {
+  assert.deepEqual(splitSections('## Method ##\n1. Stir').sections, [{ title: 'Method', markdown: '1. Stir' }]);
+  assert.equal(plainText('a [b](c) ![d](e.jpg) [f [g](h)'), 'a b [f g');
+  assert.equal(slugify(' -Crème  brûlée- '), 'creme-brulee');
+  assert.deepEqual(parseIngredientLine('[a [garlic](/ingredients/garlic.md)').refs.map((r) => r.id), ['garlic']);
+  assert.deepEqual(readRequest('Hi\r\n```recipe-host\r\n{"action":"add"}\r\n```\r\n'), { action: 'add' });
+  assert.equal(readRequest('```recipe-host\n{"action":"add"}'), null);
+
+  const recipe = parseRecipe('recipes/x/y.md', `---\ntitle: Y\nsubtitle: Z\ntags: [t]\ndate: 2026-10-20\nserves: 1\n---\n## Ingredients\n- 1 [egg](/ingredients/egg.md)\n## Method\n1. **Whisk.**   Beat it\n2. Cook`);
+  assert.deepEqual(recipe.steps.map((s) => [s.name, s.markdown]), [['Whisk', 'Beat it'], [null, 'Cook']]);
+
+  const started = Date.now();
+  plainText('[a]('.repeat(20000));
+  parseIngredientLine('[a'.repeat(20000));
+  splitSections(`## ${'#'.repeat(20000)}x`);
+  assert.throws(() => readRequest('```recipe-host\n'.repeat(5000)), RequestError);
+  assert.ok(Date.now() - started < 1000, 'the patterns took over a second on long input');
 });
