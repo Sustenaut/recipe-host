@@ -35,7 +35,7 @@ runs:
 
     - name: Install recipe-host
       shell: bash
-      run: npm ci --omit=dev --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"
+      run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"
 
     # The archive is checked against its known sha256 before anything in it
     # runs; a new version needs its checksum updated with it.
