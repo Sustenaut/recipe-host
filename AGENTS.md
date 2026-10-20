@@ -14,8 +14,11 @@ Read README.md first for what this is. This file is for changing it.
   stopping at the first.
 - **The app has no build step.** `app/` is served from jsDelivr exactly as
   committed. `index.html` is Alpine.js markup, `app.js` its state, and
-  `style.css` the site's own styles on top of Pure CSS. The libraries
-  (Alpine, its anchor plugin, Pure and marked) load from jsDelivr at the
+  `style.css` the site's own styles on top of Pure CSS. Its colours, fonts
+  and radii follow the Sustenaut design tokens (`ui/src/theme.css` in
+  schryer/business-plan), under the same names; change them there first.
+  The libraries (Alpine, its anchor plugin, Pure, the Nunito fonts and
+  marked) load from jsDelivr at the
   versions in `ASSETS` in `lib/page.js`, which must match `package.json`
   so `serve` can use the same files from `node_modules`. Prefer Alpine
   markup and Pure classes to new JavaScript or CSS.
