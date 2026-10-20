@@ -111,7 +111,8 @@ document.addEventListener('alpine:init', () => {
       }
       window.addEventListener('hashchange', () => this.go());
       this.go();
-      this.refresh();
+      // refresh() handles its own errors, so the page need not wait for it.
+      void this.refresh();
     },
 
     // A page pinned to one commit shows it at once. The page itself may come
