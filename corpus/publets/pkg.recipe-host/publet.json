@@ -1,0 +1,107 @@
+{
+  "claims": {
+    "identity": {
+      "class": "archival",
+      "content": "recipe-host 0.1.2 is released as v0.1.2 from commit 9979e09b6f1d5eef6aefb8eeecd0eee8cea71e87.",
+      "data": {
+        "columns": [
+          {
+            "name": "name"
+          },
+          {
+            "name": "version"
+          },
+          {
+            "name": "check"
+          },
+          {
+            "name": "expect"
+          },
+          {
+            "name": "tag"
+          },
+          {
+            "name": "commit"
+          }
+        ],
+        "rows": [
+          [
+            "recipe-host",
+            "0.1.2",
+            "",
+            "",
+            "v0.1.2",
+            "9979e09b6f1d5eef6aefb8eeecd0eee8cea71e87"
+          ]
+        ]
+      },
+      "scope": "the published release v0.1.2 of recipe-host",
+      "sources": [
+        {
+          "ref": "recipe-host",
+          "revision": "9979e09b6f1d5eef6aefb8eeecd0eee8cea71e87"
+        }
+      ]
+    },
+    "release": {
+      "class": "archival",
+      "content": "recipe-host 0.1.2 was released on 2026-10-20 from commit 9979e09b6f1d5eef6aefb8eeecd0eee8cea71e87 with these changes.",
+      "data": {
+        "columns": [
+          {
+            "name": "category"
+          },
+          {
+            "name": "change"
+          }
+        ],
+        "rows": [
+          [
+            "internal",
+            "Releases are cut with pubrel, and checked on every pull request."
+          ],
+          [
+            "security",
+            "The action checks Typst's sha256 before running it, installs recipe-host without npm install scripts, and pins the actions it uses by commit (now actions/setup-node 7.1.0 and peter-evans/create-pull-request 8.1.1)."
+          ],
+          [
+            "fixed",
+            "Parsing recipes and request issues no longer slows to a crawl on long or malformed lines; headings, links, list items and bold step names are read with patterns that cannot backtrack."
+          ]
+        ]
+      },
+      "depends": [
+        "#identity"
+      ],
+      "scope": "the published release v0.1.2 of recipe-host",
+      "sources": [
+        {
+          "ref": "recipe-host",
+          "revision": "9979e09b6f1d5eef6aefb8eeecd0eee8cea71e87"
+        }
+      ]
+    }
+  },
+  "created": "2026-10-20T00:00:00Z",
+  "sections": [
+    {
+      "heading": "Identity",
+      "items": [
+        {
+          "ref": "#identity"
+        }
+      ]
+    },
+    {
+      "heading": "Release",
+      "items": [
+        {
+          "ref": "#release"
+        }
+      ]
+    }
+  ],
+  "slug": "pkg.recipe-host",
+  "tag": "PKG-RECHOS-10-2026",
+  "title": "recipe-host"
+}
