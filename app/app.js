@@ -5,7 +5,13 @@
 /* global Alpine, marked */
 
 const config = window.RECIPE_HOST;
-const github = `https://github.com/${config.repo}`;
+
+// `?repo=owner/name` shows another repository's recipes on this page; without
+// it the page shows the repository it was built for. Every recipe repository
+// publishes its built data to a `site` branch, so any public one works.
+const asked = new URLSearchParams(location.search).get('repo');
+const repo = /^[\w.-]+\/[\w.-]+$/.test(asked ?? '') ? asked : config.repo;
+const github = `https://github.com/${repo}`;
 const FACT_LABELS = { serves: 'Serves', makes: 'Makes', prep: 'Prep', cook: 'Cook', rest: 'Rest', total: 'Total' };
 
 // Links in recipe Markdown point at repository files; on the site they
@@ -35,18 +41,19 @@ function setUpMarked() {
 
 // The data is read from the newest commit of the `site` branch: a commit URL
 // on jsDelivr never changes, so a new build shows at once. The branch URL is
-// the fallback when GitHub's API can't be reached.
+// the fallback when GitHub's API can't be reached. A local preview (`serve`)
+// sets `config.data` for its own repository.
 async function dataBase() {
-  if (config.data) return new URL(config.data, location.href).href;
+  if (config.data && repo === config.repo) return new URL(config.data, location.href).href;
   let ref = 'site';
   try {
-    const res = await fetch(`https://api.github.com/repos/${config.repo}/commits/site`, { headers: { Accept: 'application/vnd.github.sha' } });
+    const res = await fetch(`https://api.github.com/repos/${repo}/commits/site`, { headers: { Accept: 'application/vnd.github.sha' } });
     const sha = res.ok ? (await res.text()).trim() : '';
     if (/^[0-9a-f]{40}$/.test(sha)) ref = sha;
   } catch {
     // Offline or rate limited: use the branch.
   }
-  return `https://cdn.jsdelivr.net/gh/${config.repo}@${ref}/`;
+  return `https://cdn.jsdelivr.net/gh/${repo}@${ref}/`;
 }
 
 const normalize = (s) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -72,6 +79,7 @@ document.addEventListener('alpine:init', () => {
 
   Alpine.data('site', () => ({
     config,
+    repo,
     github,
     base: null,
     index: null,
@@ -90,7 +98,8 @@ document.addEventListener('alpine:init', () => {
         this.base = await dataBase();
         this.index = await this.fetchJson('index.json');
       } catch (err) {
-        this.error = err.message;
+        this.error = repo === config.repo ? err.message
+          : `Found no published recipes in ${repo}. It needs to be a public GitHub repository whose recipe-host workflow has run (${err.message}).`;
         return;
       }
       window.addEventListener('hashchange', () => this.go());
@@ -120,6 +129,9 @@ document.addEventListener('alpine:init', () => {
     },
 
     // ---- lookups and formatting
+    // The shown repository's own settings, from its data once loaded.
+    get title() { return this.index?.site.title ?? (repo === config.repo ? config.title : repo); },
+    get branch() { return this.index?.site.branch ?? config.branch; },
     dataUrl(path) { return new URL(path, this.base).href; },
     md: (text) => marked.parse(text ?? ''),
     mdInline: (text) => marked.parseInline(text ?? ''),

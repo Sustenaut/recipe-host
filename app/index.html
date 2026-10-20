@@ -29,7 +29,7 @@
 <body x-data="site">
 <header class="site-header">
   <nav class="container pure-menu pure-menu-horizontal">
-    <a href="#/" class="pure-menu-heading">{{title}}</a>
+    <a href="#/" class="pure-menu-heading" x-text="title">{{title}}</a>
     <ul class="pure-menu-list">
       <li class="pure-menu-item" :class="{ 'pure-menu-selected': !route.view.startsWith('ingredient') }"><a href="#/" class="pure-menu-link" :aria-current="route.view.startsWith('ingredient') ? null : 'page'">Recipes</a></li>
       <li class="pure-menu-item" :class="{ 'pure-menu-selected': route.view.startsWith('ingredient') }"><a href="#/ingredients" class="pure-menu-link" :aria-current="route.view.startsWith('ingredient') ? 'page' : null">Ingredients</a></li>
@@ -75,7 +75,7 @@
         <template x-for="[label, value] in facts(recipe)"><span><strong x-text="label"></strong> <span x-text="value"></span></span></template>
         <template x-if="recipe.source"><span>Adapted from <a :href="recipe.source" rel="noopener" x-text="hostname(recipe.source)"></a></span></template>
       </p>
-      <p class="tools"><a :href="dataUrl('cards/' + recipe.slug + '.pdf')">Recipe card (A5 PDF)</a> · <a :href="github + '/blob/' + config.branch + '/' + recipe.path" rel="noopener">Source on GitHub</a></p>
+      <p class="tools"><a :href="dataUrl('cards/' + recipe.slug + '.pdf')">Recipe card (A5 PDF)</a> · <a :href="github + '/blob/' + branch + '/' + recipe.path" rel="noopener">Source on GitHub</a></p>
       <figure x-show="recipe.photo"><img :src="recipe.photo && dataUrl(recipe.photo)" :alt="recipe.photoAlt"></figure>
       <div x-html="md(recipe.intro)"></div>
       <div class="recipe-body">
@@ -182,14 +182,18 @@
       <h2>Notes</h2>
       <div x-show="ingredient.notes" x-html="md(ingredient.notes)"></div>
       <p x-show="!ingredient.notes">No notes yet.</p>
-      <p><a :href="github + '/edit/' + config.branch + '/ingredients/' + ingredient.id + '.md'" rel="noopener">Edit the notes on GitHub</a></p>
+      <p><a :href="github + '/edit/' + branch + '/ingredients/' + ingredient.id + '.md'" rel="noopener">Edit the notes on GitHub</a></p>
     </section>
   </template>
 
   <article x-show="index && notFound" x-cloak><h1>Not found</h1><p>There is nothing here. <a href="#/">Back to the recipes</a>.</p></article>
 </main>
 
-<footer class="container site-footer"><small>Recipes from <a href="https://github.com/{{repo}}">{{repo}}</a> · served with <a href="https://github.com/schryer/recipe-host">recipe-host</a></small></footer>
+<footer class="container site-footer"><small>
+  Recipes from <a :href="github" x-text="repo">{{repo}}</a>
+  <template x-if="repo !== config.repo"><span>· <a href="?">Back to the recipes from <span x-text="config.repo"></span></a></span></template>
+  · served with <a href="https://github.com/schryer/recipe-host">recipe-host</a>
+</small></footer>
 
 <!-- Every dialog ends in openRequest(): a prefilled GitHub issue that the
      recipe repository's workflow turns into a pull request. -->

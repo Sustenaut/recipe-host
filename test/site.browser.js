@@ -17,10 +17,11 @@ let server;
 let browser;
 let page;
 let base;
+let out;
 const errors = [];
 
 before(async () => {
-  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-site-'));
+  out = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-site-'));
   const repo = buildSite(FIXTURE, out, { cards: false, page: LOCAL_PAGE, log: () => {} });
   assert.deepEqual(repo.errors, []);
   server = serve(out).listen(0);
@@ -53,11 +54,11 @@ async function eventually(read, expected) {
 }
 
 // The request the site would open as a GitHub issue, read from the popup URL.
-async function requestFrom(click) {
+async function requestFrom(click, repo = 'example/recipes') {
   const [popup] = await Promise.all([page.waitForEvent('popup'), click()]);
   const url = new URL(popup.url());
   await popup.close();
-  assert.equal(url.origin + url.pathname, 'https://github.com/example/recipes/issues/new');
+  assert.equal(url.origin + url.pathname, `https://github.com/${repo}/issues/new`);
   return JSON.parse(url.searchParams.get('body').match(/```recipe-host\n(.*)\n```/)[1]);
 }
 
@@ -158,6 +159,50 @@ test('an ingredient page lists its uses and requests a substitution for the tick
   await page.fill('dialog[open] textarea', 'Use the same weight of roasted onions.');
   const request = await requestFrom(() => page.click('dialog[open] >> text=Request on GitHub'));
   assert.deepEqual(request, { action: 'add-substitution', ingredient: 'coriander', recipes: ['herb-salad'], with: 'onion', note: 'Use the same weight of roasted onions.' });
+});
+
+// Another repository's published data, served the way GitHub and jsDelivr
+// would: the fixture's build under a different repository and title.
+async function publish(repoName, title) {
+  const sha = 'a'.repeat(40);
+  await page.route(`https://api.github.com/repos/${repoName}/commits/site`, (route) => route.fulfill({ body: sha }));
+  await page.route(`https://cdn.jsdelivr.net/gh/${repoName}@${sha}/**`, (route) => {
+    const file = new URL(route.request().url()).pathname.split(`@${sha}/`)[1];
+    if (file !== 'index.json') return route.fulfill({ path: path.join(out, file) });
+    const index = JSON.parse(fs.readFileSync(path.join(out, file), 'utf8'));
+    Object.assign(index.site, { repo: repoName, title, branch: 'main' });
+    return route.fulfill({ json: index });
+  });
+}
+
+test('?repo= shows another repository and sends its requests there', async () => {
+  await publish('friend/cookbook', "Friend's cookbook");
+  await visit('?repo=friend/cookbook#/recipe/salsa-verde', '.steps li');
+  assert.equal(await page.textContent('.pure-menu-heading'), "Friend's cookbook");
+  assert.equal(await page.title(), "Salsa verde · Friend's cookbook");
+  assert.equal(await page.getAttribute('text=Source on GitHub', 'href'), 'https://github.com/friend/cookbook/blob/main/recipes/sauces/salsa-verde.md');
+  assert.match(await page.textContent('.site-footer'), /Recipes from friend\/cookbook\s+· Back to the recipes from example\/recipes/);
+  // Links inside the site keep the repository.
+  await page.click('a.ingredient-link >> text=scallions');
+  await page.waitForSelector('table');
+  assert.equal(new URL(page.url()).search, '?repo=friend/cookbook');
+  await page.check('input[value=salsa-verde]');
+  await page.click('form button[type=submit]');
+  await page.click('dialog[open] .picker li:has-text("Onion") >> nth=0');
+  await page.fill('dialog[open] textarea', 'Roasted onions.');
+  const request = await requestFrom(() => page.click('dialog[open] >> text=Request on GitHub'), 'friend/cookbook');
+  assert.equal(request.action, 'add-substitution');
+  await page.unrouteAll();
+});
+
+test('?repo= naming a repository with nothing published says so', async () => {
+  const before = errors.length;
+  await page.route('https://api.github.com/**', (route) => route.fulfill({ status: 404, body: '' }));
+  await page.route('https://cdn.jsdelivr.net/gh/**', (route) => route.fulfill({ status: 404, body: '' }));
+  await visit('?repo=nobody/nothing#/', 'article:has-text("Something went wrong")');
+  assert.match(await page.textContent('article'), /Found no published recipes in nobody\/nothing\./);
+  await page.unrouteAll();
+  errors.splice(before); // the browser logs the 404s themselves
 });
 
 test('no page logged an error', () => {
