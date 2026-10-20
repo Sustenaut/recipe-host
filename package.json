@@ -7,11 +7,12 @@
     "test": "test"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/*.test.js",
+    "test:browser": "node --test --test-concurrency=1 test/*.browser.js"
   },
   "license": "MIT",
   "dependencies": {
-    "marked": "^18.0.14",
+    "marked": "^18.1.0",
     "yaml": "^2.9.1"
   },
   "type": "module",
@@ -24,5 +25,11 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@alpinejs/anchor": "^3.17.4",
+    "alpinejs": "^3.17.4",
+    "playwright": "^1.56.1",
+    "purecss": "^3.1.0"
   }
 }

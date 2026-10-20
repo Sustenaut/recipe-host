@@ -45,8 +45,12 @@ your web server: index.html ──▶ app (this repo, at a pinned tag, via jsDel
                                  + data (the site branch, via jsDelivr)
 ```
 
-- **`app/`** is the site: plain JavaScript modules with no build step.
-  `boot.js` is the one script a page includes.
+- **`app/`** is the site, with no build step: `index.html` is an
+  [Alpine.js](https://alpinejs.dev) template styled with
+  [Pure CSS](https://pure-css.github.io), and `app.js` holds its state.
+  `recipe-host build` fills in the repository's settings and writes the page
+  as the site's `index.html`; everything it loads comes from jsDelivr at
+  pinned versions.
 - **`lib/`** and **`bin/recipe-host.js`** are the command line: `check`,
   `build`, `link`, `request` and `serve`.
 - **`cards/recipe-card.typ`** is the A5 card, set with [Typst](https://typst.app).
@@ -114,13 +118,9 @@ shows up as soon as its build finishes, with no cache to wait out.
 3. In the repository's settings, under *Actions → General → Workflow
    permissions*, tick **Allow GitHub Actions to create and approve pull
    requests**.
-4. Serve the built `index.html` (it is on the `site` branch, and the
-   `deploy-key` step copies it to your server), or any page with:
-
-   ```html
-   <script src="https://cdn.jsdelivr.net/gh/schryer/recipe-host@v0.1.0/app/boot.js"
-           data-repo="owner/recipes"></script>
-   ```
+4. Serve the built `index.html`. It is on the `site` branch, and with
+   `deploy-key` set the publish step copies it to your server. It is the
+   only file your server needs.
 
 Pull requests opened by the request workflow use the workflow's own token,
 and GitHub does not run other workflows for those, so the request workflow
@@ -147,10 +147,13 @@ npm test
 node bin/recipe-host.js serve --root ../recipes
 ```
 
+`npm run test:browser` clicks through a built test site in Chromium (run
+`npx playwright install chromium` once first).
+
 See [AGENTS.md](AGENTS.md) for how the pieces fit and what to keep true when
-changing them. Releases are git tags (`v0.1.0`); a site pins one in its
-`boot.js` URL and its workflows, so a release changes nothing until a site
-moves to it.
+changing them. Releases are git tags (`v0.1.0`); a recipe repository pins one
+in its workflows, and its built page loads the app from that tag, so a
+release changes nothing until a site moves to it.
 
 ## Licence
 

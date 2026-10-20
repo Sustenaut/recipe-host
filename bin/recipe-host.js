@@ -3,19 +3,18 @@
 // or pass --root. See README.md for what each command is for.
 
 import fs from 'node:fs';
-import http from 'node:http';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { buildSite } from '../lib/build.js';
 import { linkRecipe } from '../lib/link.js';
 import { loadRepo } from '../lib/repo.js';
 import { applyRequest, readRequest, RequestError } from '../lib/requests.js';
+import { LOCAL_PAGE, serve } from '../lib/serve.js';
 
 const USAGE = `Usage: recipe-host <command> [options]
 
   check                    check every recipe and ingredient
   build [--out DIR]        build the site data (default _site) and cards
-        [--engine URL]     the app's boot.js for index.html (default: this version on jsDelivr)
+        [--engine URL]     the app/ folder index.html loads from (default: this version on jsDelivr)
   link FILE...             link a recipe's plain ingredient lines to the ingredient list
   request --issue FILE     apply the request in a GitHub issue (JSON from the API)
   serve [--port N]         build, then preview the site at http://localhost:N
@@ -61,7 +60,7 @@ switch (command) {
     const out = path.resolve(args.out ?? path.join(root, '_site'));
     const options = {};
     if (args.cards === false) options.cards = false;
-    if (args.engine) options.engine = args.engine;
+    if (args.engine) options.page = { engine: args.engine };
     const repo = buildSite(root, out, options);
     report(repo);
     process.exit(repo.errors.length ? 1 : 0);
@@ -107,43 +106,19 @@ switch (command) {
     process.exit(0);
   }
   case 'serve': {
+    // Everything on one local origin: the app from this checkout, the
+    // libraries from node_modules, and the built data.
     const out = path.resolve(args.out ?? path.join(root, '_site'));
-    const repo = buildSite(root, out, args.cards === false ? { cards: false } : {});
+    const options = { page: LOCAL_PAGE };
+    if (args.cards === false) options.cards = false;
+    const repo = buildSite(root, out, options);
     report(repo);
     if (repo.errors.length) process.exit(1);
-    serve(out, Number(args.port ?? 8080), repo.config);
+    const port = Number(args.port ?? 8080);
+    serve(out).listen(port, () => console.log(`Previewing at http://localhost:${port}/`));
     break;
   }
   default:
     console.log(USAGE);
     process.exit(command ? 2 : 0);
-}
-
-// A local preview: the app from this checkout, marked from node_modules,
-// and the built data, all on one origin.
-function serve(out, port, config) {
-  const engine = fileURLToPath(new URL('..', import.meta.url));
-  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml' };
-  const shell = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${config.title}</title>
-<script src="/engine/app/boot.js" data-repo="${config.repo ?? 'owner/repo'}" data-data="/data/"
-  data-marked="/engine/node_modules/marked/lib/marked.esm.js"></script>
-</head><body></body></html>`;
-  http.createServer((req, res) => {
-    const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    let file = null;
-    if (url === '/' || url === '/index.html') {
-      res.writeHead(200, { 'content-type': 'text/html' });
-      return res.end(shell);
-    }
-    if (url.startsWith('/engine/')) file = path.join(engine, url.slice(8));
-    if (url.startsWith('/data/')) file = path.join(out, url.slice(6));
-    if (!file || !file.startsWith(url.startsWith('/engine/') ? engine : out) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
-      res.writeHead(404);
-      return res.end('not found');
-    }
-    res.writeHead(200, { 'content-type': types[path.extname(file)] ?? 'application/octet-stream' });
-    fs.createReadStream(file).pipe(res);
-  }).listen(port, () => console.log(`Previewing at http://localhost:${port}/`));
 }

@@ -1,0 +1,246 @@
+<!doctype html>
+<!--
+  The recipe site. `recipe-host build` fills in the {{…}} placeholders
+  (lib/page.js) and writes this page into the site; everything it loads
+  comes from jsDelivr at pinned versions. The views are Alpine.js markup
+  over the state in app.js:
+
+    #/                  recipes by category, with search
+    #/recipe/<slug>     one recipe
+    #/ingredients       the master ingredient list, with search
+    #/ingredient/<id>   one ingredient, the recipes it is in, and its notes
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<link rel="stylesheet" href="{{pure}}">
+<link rel="stylesheet" href="{{engine}}style.css">
+<script>window.RECIPE_HOST = {{config}};</script>
+<script defer src="{{marked}}"></script>
+<script defer src="{{engine}}app.js"></script>
+<script defer src="{{anchor}}"></script>
+<script defer src="{{alpine}}"></script>
+</head>
+<body x-data="site">
+<header class="site-header">
+  <nav class="container pure-menu pure-menu-horizontal">
+    <a href="#/" class="pure-menu-heading">{{title}}</a>
+    <ul class="pure-menu-list">
+      <li class="pure-menu-item" :class="{ 'pure-menu-selected': !route.view.startsWith('ingredient') }"><a href="#/" class="pure-menu-link" :aria-current="route.view.startsWith('ingredient') ? null : 'page'">Recipes</a></li>
+      <li class="pure-menu-item" :class="{ 'pure-menu-selected': route.view.startsWith('ingredient') }"><a href="#/ingredients" class="pure-menu-link" :aria-current="route.view.startsWith('ingredient') ? 'page' : null">Ingredients</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main class="container pure-form">
+  <noscript>This recipe site needs JavaScript. The recipes are also on <a href="https://github.com/{{repo}}">GitHub</a>.</noscript>
+  <p x-show="!index && !error" class="lede">Loading…</p>
+  <article x-show="error" x-cloak><h1>Something went wrong</h1><p x-text="error"></p></article>
+
+  <!-- Recipes, by category -->
+  <template x-if="index && route.view === 'recipes'">
+    <section>
+      <h1 x-text="index.site.title"></h1>
+      <p class="lede" x-text="index.site.description"></p>
+      <input type="search" class="pure-input-1" x-model="q" placeholder="Search recipes, tags and ingredients" aria-label="Search recipes">
+      <template x-for="c in categories" :key="c">
+        <section x-show="recipesIn(c).length">
+          <h2 x-text="titleCase(c)"></h2>
+          <div class="cards">
+            <template x-for="r in recipesIn(c)" :key="r.slug">
+              <a class="card" :href="'#/recipe/' + r.slug">
+                <img x-show="r.photo" :src="r.photo && dataUrl(r.photo)" alt="" loading="lazy">
+                <strong x-text="r.title"></strong><span x-text="r.subtitle"></span>
+              </a>
+            </template>
+          </div>
+        </section>
+      </template>
+      <p x-show="!categories.some((c) => recipesIn(c).length)">No recipe matches.</p>
+    </section>
+  </template>
+
+  <!-- One recipe -->
+  <template x-if="index && route.view === 'recipe' && recipe">
+    <article class="recipe">
+      <p class="crumbs"><a href="#/" x-text="index.site.title"></a> / <span x-text="titleCase(recipe.category)"></span></p>
+      <h1 x-text="recipe.title"></h1>
+      <p class="subtitle" x-text="recipe.subtitle"></p>
+      <p class="facts">
+        <template x-for="[label, value] in facts(recipe)"><span><strong x-text="label"></strong> <span x-text="value"></span></span></template>
+        <template x-if="recipe.source"><span>Adapted from <a :href="recipe.source" rel="noopener" x-text="hostname(recipe.source)"></a></span></template>
+      </p>
+      <p class="tools"><a :href="dataUrl('cards/' + recipe.slug + '.pdf')">Recipe card (A5 PDF)</a> · <a :href="github + '/blob/' + config.branch + '/' + recipe.path" rel="noopener">Source on GitHub</a></p>
+      <figure x-show="recipe.photo"><img :src="recipe.photo && dataUrl(recipe.photo)" :alt="recipe.photoAlt"></figure>
+      <div x-html="md(recipe.intro)"></div>
+      <div class="recipe-body">
+        <section>
+          <h2>Ingredients</h2>
+          <template x-for="g in recipe.ingredientGroups">
+            <div>
+              <h3 x-show="g.title" x-text="g.title"></h3>
+              <ul>
+                <template x-for="item in g.items">
+                  <li>
+                    <span x-html="mdInline(item.markdown)"></span>
+                    <template x-for="s in swapsFor(item)">
+                      <div class="swap"><mark>Swap</mark> <a :href="'#/ingredient/' + s.with" x-text="ingredientName(s.with)"></a>: <span x-html="mdInline(s.note)"></span></div>
+                    </template>
+                  </li>
+                </template>
+              </ul>
+            </div>
+          </template>
+        </section>
+        <section>
+          <h2>Method</h2>
+          <ol class="steps">
+            <template x-for="s in recipe.steps"><li><strong x-show="s.name" x-text="s.name + '.'"></strong> <span x-html="mdInline(s.markdown)"></span></li></template>
+          </ol>
+        </section>
+      </div>
+      <template x-for="s in recipe.sections.filter((s) => s.title !== 'Ingredients' && s.title !== 'Method')">
+        <section><h2 x-text="s.title"></h2><div x-html="md(s.markdown)"></div></section>
+      </template>
+    </article>
+  </template>
+
+  <!-- The master ingredient list -->
+  <template x-if="index && route.view === 'ingredients'">
+    <section>
+      <div class="title-row">
+        <h1>Ingredients</h1>
+        <button class="pure-button pure-button-primary" @click="openAdd()">Add ingredient</button>
+      </div>
+      <p class="lede">Every ingredient in every recipe. Open one to see the recipes it is in, how each one prepares it, and what can replace it.</p>
+      <input type="search" class="pure-input-1" x-model="q" placeholder="Search ingredients" aria-label="Search ingredients" x-init="$el.focus()">
+      <p class="count" x-text="plural(ingredients.length, 'ingredient', 'ingredients')"></p>
+      <ul class="ingredient-list">
+        <template x-for="i in ingredients" :key="i.id">
+          <li class="row" :class="{ open: menu?.id === i.id }">
+            <a :href="'#/ingredient/' + i.id"><span x-text="i.name"></span> <small class="aliases" x-text="i.aliases.join(', ')"></small></a>
+            <small x-text="plural(recipeCount(i), 'recipe', 'recipes')"></small>
+            <button class="dots" :aria-label="'More for ' + i.name" aria-haspopup="menu" :aria-expanded="menu?.id === i.id" @click="toggleMenu(i, $el)">⋯</button>
+          </li>
+        </template>
+        <li x-show="!ingredients.length">No ingredient matches. <a href="#" @click.prevent="openAdd(q)">Add it</a>?</li>
+      </ul>
+      <div class="menu pure-menu" x-show="menu" x-cloak x-anchor.bottom-end.offset.4="menu?.button"
+           @click.outside="$event.target.closest('.dots') || (menu = null)" @keydown.escape.window="menu = null">
+        <ul class="pure-menu-list" role="menu">
+          <li class="pure-menu-item"><button class="pure-menu-link" role="menuitem" @click="openMerge(menu.ingredient)">Merge into another ingredient…</button></li>
+          <li class="pure-menu-item"><button class="pure-menu-link" role="menuitem" @click="location.hash = '#/ingredient/' + menu.id">Open</button></li>
+        </ul>
+      </div>
+    </section>
+  </template>
+
+  <!-- One ingredient -->
+  <template x-if="index && route.view === 'ingredient' && ingredient">
+    <section>
+      <p class="crumbs"><a href="#/ingredients">Ingredients</a></p>
+      <h1 x-text="ingredient.name"></h1>
+      <p x-show="ingredient.aliases.length" x-text="'Also called ' + ingredient.aliases.join(', ')"></p>
+      <h2>Used in</h2>
+      <template x-if="uses.length">
+        <form @submit.prevent="openSubstitute()">
+          <table class="pure-table pure-table-horizontal">
+            <thead><tr><th></th><th>Recipe</th><th>How it is used</th></tr></thead>
+            <tbody>
+              <template x-for="u in uses" :key="u.recipe">
+                <tr>
+                  <td><input type="checkbox" x-model="selected" :value="u.recipe" :aria-label="'Select ' + recipeTitle(u.recipe)"></td>
+                  <td><a :href="'#/recipe/' + u.recipe" x-text="recipeTitle(u.recipe)"></a></td>
+                  <td><template x-for="line in u.lines"><div><small x-show="line.group" x-text="line.group + ':'"></small> <span x-text="line.line"></span></div></template></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="actions">
+            <button type="submit" class="pure-button pure-button-primary" :disabled="!selected.length">Add substitution note</button>
+            <small x-text="selected.length ? plural(selected.length, 'recipe', 'recipes') + ' selected.' : 'Select the recipes it applies to.'"></small>
+          </div>
+        </form>
+      </template>
+      <p x-show="!uses.length">No recipe uses it yet.</p>
+      <h2>Substitutions</h2>
+      <ul x-show="ingredient.substitutions.length">
+        <template x-for="s in ingredient.substitutions">
+          <li>
+            <strong>Use <a :href="'#/ingredient/' + s.with" x-text="ingredientName(s.with)"></a></strong>
+            <small>in <template x-for="(slug, n) in s.recipes"><span><span x-show="n">, </span><a :href="'#/recipe/' + slug" x-text="recipeTitle(slug)"></a></span></template></small>
+            <div x-html="md(s.note)"></div>
+          </li>
+        </template>
+      </ul>
+      <p x-show="!ingredient.substitutions.length">None yet. Select recipes above to add one.</p>
+      <h2>Notes</h2>
+      <div x-show="ingredient.notes" x-html="md(ingredient.notes)"></div>
+      <p x-show="!ingredient.notes">No notes yet.</p>
+      <p><a :href="github + '/edit/' + config.branch + '/ingredients/' + ingredient.id + '.md'" rel="noopener">Edit the notes on GitHub</a></p>
+    </section>
+  </template>
+
+  <article x-show="index && notFound" x-cloak><h1>Not found</h1><p>There is nothing here. <a href="#/">Back to the recipes</a>.</p></article>
+</main>
+
+<footer class="container site-footer"><small>Recipes from <a href="https://github.com/{{repo}}">{{repo}}</a> · served with <a href="https://github.com/schryer/recipe-host">recipe-host</a></small></footer>
+
+<!-- Every dialog ends in openRequest(): a prefilled GitHub issue that the
+     recipe repository's workflow turns into a pull request. -->
+<dialog x-effect="dialog === 'merge' ? $el.showModal() : $el.close()" @close="dialog = null">
+  <template x-if="dialog === 'merge'"><article class="pure-form pure-form-stacked">
+    <h2 x-text="'Merge ' + form.from?.name"></h2>
+    <p>Choose the ingredient to keep. <span x-text="form.from?.name"></span> becomes one of its aliases, its notes and substitutions move across, and every recipe that uses it links to the one you keep.</p>
+    <input type="search" class="pure-input-1" x-model="form.pick" placeholder="Search ingredients" aria-label="Search ingredients">
+    <ul class="picker" role="listbox">
+      <template x-for="i in pickable" :key="i.id">
+        <li role="option" :aria-selected="form.choice === i.id" @click="form.choice = i.id" x-text="i.name"></li>
+      </template>
+    </ul>
+    <footer>
+      <button class="pure-button" @click="dialog = null">Cancel</button>
+      <button class="pure-button pure-button-primary" :disabled="!form.choice" @click="requestMerge()">Request merge on GitHub</button>
+    </footer>
+  </article></template>
+</dialog>
+
+<dialog x-effect="dialog === 'add' ? $el.showModal() : $el.close()" @close="dialog = null">
+  <template x-if="dialog === 'add'"><article class="pure-form pure-form-stacked">
+    <h2>Add an ingredient</h2>
+    <form class="pure-form pure-form-stacked" @submit.prevent="requestAdd()">
+      <label>Name <input class="pure-input-1" x-model="form.name" required maxlength="80" placeholder="Serrano chilli"></label>
+      <label>Other names, comma separated <input class="pure-input-1" x-model="form.aliases" maxlength="300" placeholder="serrano, serrano pepper"></label>
+      <label>Notes (optional, Markdown) <textarea class="pure-input-1" x-model="form.notes" rows="4" maxlength="2000" placeholder="How to buy, store or prepare it"></textarea></label>
+      <small class="error" x-show="form.error" x-text="form.error"></small>
+      <footer>
+        <button type="button" class="pure-button" @click="dialog = null">Cancel</button>
+        <button type="submit" class="pure-button pure-button-primary">Request on GitHub</button>
+      </footer>
+    </form>
+  </article></template>
+</dialog>
+
+<dialog x-effect="dialog === 'substitute' ? $el.showModal() : $el.close()" @close="dialog = null">
+  <template x-if="dialog === 'substitute'"><article class="pure-form pure-form-stacked">
+    <h2 x-text="'Substitute ' + ingredient?.name"></h2>
+    <p x-text="'In ' + selected.map((s) => recipeTitle(s)).join(', ') + '. Choose what to use instead, and say how.'"></p>
+    <input type="search" class="pure-input-1" x-model="form.pick" placeholder="Search ingredients" aria-label="Search ingredients">
+    <ul class="picker" role="listbox">
+      <template x-for="i in pickable" :key="i.id">
+        <li role="option" :aria-selected="form.choice === i.id" @click="form.choice = i.id" x-text="i.name"></li>
+      </template>
+    </ul>
+    <label>How to substitute <textarea class="pure-input-1" x-model="form.note" rows="4" maxlength="2000" placeholder="Use the same weight of roasted onions."></textarea></label>
+    <small>Not on the list? <a href="#" @click.prevent="openAdd()">Add the ingredient first</a>.</small>
+    <footer>
+      <button class="pure-button" @click="dialog = null">Cancel</button>
+      <button class="pure-button pure-button-primary" :disabled="!form.choice || !form.note?.trim()" @click="requestSubstitution()">Request on GitHub</button>
+    </footer>
+  </article></template>
+</dialog>
+</body>
+</html>

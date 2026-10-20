@@ -51,7 +51,7 @@ runs:
       if: inputs.command != 'request'
       shell: bash
       env:
-        ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/boot.js
+        ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/
       run: node "$GITHUB_ACTION_PATH/bin/recipe-host.js" build --out "$RUNNER_TEMP/site" --engine "$ENGINE"
 
     # The `site` branch holds only the latest build, as one commit, so the
@@ -113,31 +113,37 @@ runs:
         printf '%s' "$ISSUE" > "$RUNNER_TEMP/issue.json"
         node "$GITHUB_ACTION_PATH/bin/recipe-host.js" request --issue "$RUNNER_TEMP/issue.json"
 
+    # Editing the issue re-runs the request; the same branch name means the
+    # existing pull request is updated rather than a second one opened.
     - name: Open the pull request
+      id: pr
       if: inputs.command == 'request' && steps.request.outputs.status == 'ok'
+      uses: peter-evans/create-pull-request@v7
+      with:
+        token: ${{ inputs.github-token }}
+        branch: ${{ steps.request.outputs.branch }}
+        title: ${{ steps.request.outputs.title }}
+        body: ${{ steps.request.outputs.body }}
+        commit-message: |
+          ${{ steps.request.outputs.title }}
+
+          Requested in #${{ github.event.issue.number }}.
+        author: ${{ github.event.issue.user.login }} <${{ github.event.issue.user.id }}+${{ github.event.issue.user.login }}@users.noreply.github.com>
+        delete-branch: true
+
+    - name: Link the pull request from the issue
+      if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
-        BRANCH: ${{ steps.request.outputs.branch }}
-        TITLE: ${{ steps.request.outputs.title }}
-        BODY: ${{ steps.request.outputs.body }}
-        AUTHOR: ${{ github.event.issue.user.login }}
-        AUTHOR_ID: ${{ github.event.issue.user.id }}
+        OPERATION: ${{ steps.pr.outputs.pull-request-operation }}
+        URL: ${{ steps.pr.outputs.pull-request-url }}
         NUMBER: ${{ github.event.issue.number }}
       run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git switch -c "$BRANCH"
-        git add -A
-        git commit -q -m "$TITLE" -m "Requested in #${NUMBER}." -m "Co-authored-by: ${AUTHOR} <${AUTHOR_ID}+${AUTHOR}@users.noreply.github.com>"
-        git push -q --force origin "$BRANCH"
-        # Editing the issue re-runs the request and updates its pull request.
-        if url=$(gh pr view "$BRANCH" --json url,state -q 'select(.state == "OPEN") | .url' 2>/dev/null) && [ -n "$url" ]; then
-          gh pr edit "$BRANCH" --title "$TITLE" --body "$BODY"
-          gh issue comment "$NUMBER" --body "Updated ${url} to match the edited request."
+        if [ "$OPERATION" = created ]; then
+          gh issue comment "$NUMBER" --body "Opened ${URL} with this change. It closes this issue when it is merged."
         else
-          url=$(gh pr create --head "$BRANCH" --title "$TITLE" --body "$BODY")
-          gh issue comment "$NUMBER" --body "Opened ${url} with this change. It closes this issue when it is merged."
+          gh issue comment "$NUMBER" --body "Updated ${URL} to match the edited request."
         fi
 
     - name: Explain why there is no pull request
