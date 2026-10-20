@@ -3,6 +3,14 @@
     {
       "category": "internal",
       "change": "Releases are cut with pubrel, and checked on every pull request."
+    },
+    {
+      "category": "security",
+      "change": "The action checks Typst's sha256 before running it, installs recipe-host without npm install scripts, and pins the actions it uses by commit (now actions/setup-node 7.1.0 and peter-evans/create-pull-request 8.1.1)."
+    },
+    {
+      "category": "fixed",
+      "change": "Parsing recipes and request issues no longer slows to a crawl on long or malformed lines; headings, links, list items and bold step names are read with patterns that cannot backtrack."
     }
   ],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."
