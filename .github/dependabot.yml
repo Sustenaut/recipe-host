@@ -1,0 +1,8 @@
+# Keeps the actions this repository and its action.yml use at current
+# releases, pinned by commit; each bump arrives as a pull request.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
