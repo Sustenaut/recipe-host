@@ -59,12 +59,12 @@
   <!-- Recipes, by category -->
   <template x-if="index && route.view === 'recipes'">
     <section>
-      <h1 x-text="index.site.title"></h1>
+      <h1 x-text="index.site.title">Recipes</h1>
       <p class="lede" x-text="index.site.description"></p>
       <input type="search" class="pure-input-1" x-model="q" placeholder="Search recipes, tags and ingredients" aria-label="Search recipes">
       <template x-for="c in categories" :key="c">
         <section x-show="recipesIn(c).length">
-          <h2 x-text="titleCase(c)"></h2>
+          <h2 x-text="titleCase(c)">Category</h2>
           <div class="cards">
             <template x-for="r in recipesIn(c)" :key="r.slug">
               <a class="card" :href="'#/recipe/' + r.slug">
@@ -83,7 +83,7 @@
   <template x-if="index && route.view === 'recipe' && recipe">
     <article class="recipe">
       <p class="crumbs"><a href="#/" x-text="index.site.title"></a> / <span x-text="titleCase(recipe.category)"></span></p>
-      <h1 x-text="recipe.title"></h1>
+      <h1 x-text="recipe.title">Recipe</h1>
       <p class="subtitle" x-text="recipe.subtitle"></p>
       <p class="facts">
         <template x-for="[label, value] in facts(recipe)"><span><strong x-text="label"></strong> <span x-text="value"></span></span></template>
@@ -97,7 +97,7 @@
           <h2>Ingredients</h2>
           <template x-for="g in recipe.ingredientGroups">
             <div>
-              <h3 x-show="g.title" x-text="g.title"></h3>
+              <h3 x-show="g.title" x-text="g.title">Ingredients</h3>
               <ul>
                 <template x-for="item in g.items">
                   <li>
@@ -119,7 +119,7 @@
         </section>
       </div>
       <template x-for="s in recipe.sections.filter((s) => s.title !== 'Ingredients' && s.title !== 'Method')">
-        <section><h2 x-text="s.title"></h2><div x-html="md(s.markdown)"></div></section>
+        <section><h2 x-text="s.title">Section</h2><div x-html="md(s.markdown)"></div></section>
       </template>
     </article>
   </template>
@@ -158,7 +158,7 @@
   <template x-if="index && route.view === 'ingredient' && ingredient">
     <section>
       <p class="crumbs"><a href="#/ingredients">Ingredients</a></p>
-      <h1 x-text="ingredient.name"></h1>
+      <h1 x-text="ingredient.name">Ingredient</h1>
       <p x-show="ingredient.aliases.length" x-text="'Also called ' + ingredient.aliases.join(', ')"></p>
       <h2>Used in</h2>
       <template x-if="uses.length">
@@ -213,7 +213,7 @@
      recipe repository's workflow turns into a pull request. -->
 <dialog x-effect="dialog === 'merge' ? $el.showModal() : $el.close()" @close="dialog = null">
   <template x-if="dialog === 'merge'"><article class="pure-form pure-form-stacked">
-    <h2 x-text="'Merge ' + form.from?.name"></h2>
+    <h2 x-text="'Merge ' + form.from?.name">Merge</h2>
     <p>Choose the ingredient to keep. <span x-text="form.from?.name"></span> becomes one of its aliases, its notes and substitutions move across, and every recipe that uses it links to the one you keep.</p>
     <input type="search" class="pure-input-1" x-model="form.pick" placeholder="Search ingredients" aria-label="Search ingredients">
     <ul class="picker" role="listbox">
@@ -246,7 +246,7 @@
 
 <dialog x-effect="dialog === 'substitute' ? $el.showModal() : $el.close()" @close="dialog = null">
   <template x-if="dialog === 'substitute'"><article class="pure-form pure-form-stacked">
-    <h2 x-text="'Substitute ' + ingredient?.name"></h2>
+    <h2 x-text="'Substitute ' + ingredient?.name">Substitute</h2>
     <p x-text="'In ' + selected.map((s) => recipeTitle(s)).join(', ') + '. Choose what to use instead, and say how.'"></p>
     <input type="search" class="pure-input-1" x-model="form.pick" placeholder="Search ingredients" aria-label="Search ingredients">
     <ul class="picker" role="listbox">
