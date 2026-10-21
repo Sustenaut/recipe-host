@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="recipe-host">
+  <circle cx="50" cy="50" r="48" fill="#5BC236"/>
+  <path d="M41 18 C36 23 46 27 41 32 M59 18 C54 23 64 27 59 32" fill="none" stroke="#17110C" stroke-width="5" stroke-linecap="round"/>
+  <path d="M27 42 H73" stroke="#17110C" stroke-width="7" stroke-linecap="round"/>
+  <path d="M31 48 H69 V68 Q69 80 57 80 H43 Q31 80 31 68 Z" fill="#17110C"/>
+  <path d="M31 54 H22 M69 54 H78" stroke="#17110C" stroke-width="7" stroke-linecap="round"/>
+</svg>

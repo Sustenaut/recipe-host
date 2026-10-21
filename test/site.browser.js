@@ -1,6 +1,7 @@
 // Browser test of the site: builds test/fixtures/repo, serves it locally
 // and clicks through every view in Chromium. Run with `npm run test:browser`
-// (after `npx playwright install chromium` once).
+// (after `npx playwright install chromium` once). It also writes
+// coverage/browser.lcov.info, the lines of app/app.js the clicks ran.
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -12,6 +13,7 @@ import { buildSite } from '../lib/build.js';
 import { pageHtml } from '../lib/page.js';
 import { loadConfig } from '../lib/repo.js';
 import { LOCAL_PAGE, serve } from '../lib/serve.js';
+import { v8ToLcov } from './v8-lcov.js';
 
 const FIXTURE = new URL('./fixtures/repo', import.meta.url).pathname;
 
@@ -32,9 +34,13 @@ before(async () => {
   page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
   page.on('pageerror', (err) => errors.push(err.message));
   page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  await page.coverage.startJSCoverage({ resetOnNavigation: false });
 });
 
 after(async () => {
+  const app = (await page.coverage.stopJSCoverage()).filter((e) => e.url.endsWith('/engine/app/app.js'));
+  fs.mkdirSync('coverage', { recursive: true });
+  fs.writeFileSync('coverage/browser.lcov.info', v8ToLcov(app, 'app/app.js'));
   await browser?.close();
   server?.close();
 });
@@ -64,13 +70,72 @@ async function requestFrom(click, repo = 'example/recipes') {
   return JSON.parse(url.searchParams.get('body').match(/```recipe-host\n(.*)\n```/)[1]);
 }
 
-test('the front page lists recipes by category and searches ingredients', async () => {
+test('the recipe list searches ingredients and filters by type and meal', async () => {
+  await visit('#/recipes', '.row');
+  const titles = () => page.locator('.row a span').allTextContents();
+  assert.deepEqual(await titles(), ['Herb salad', 'Salsa verde']);
+  await page.fill('input[type=search]', 'jalap');
+  await eventually(() => page.locator('.row').count(), 0);
+  await page.fill('input[type=search]', 'serrano');
+  await eventually(titles, ['Salsa verde']);
+  await page.fill('input[type=search]', '');
+  // Within a group any ticked chip matches; across groups, one of each.
+  await page.click('.chip:has-text("Sauces")');
+  await eventually(titles, ['Salsa verde']);
+  await page.click('.chip:has-text("Salads")');
+  await eventually(titles, ['Herb salad', 'Salsa verde']);
+  await page.click('.chip:has-text("Lunch")');
+  await eventually(titles, ['Herb salad']);
+  assert.equal(await page.textContent('.chip:has-text("Dinner") small'), '0');
+  await page.click('text=Clear filters');
+  await eventually(titles, ['Herb salad', 'Salsa verde']);
+});
+
+test('the front page shows the favourites starred on the list, kept per repository', async () => {
+  await visit('#/', '.empty');
+  assert.match(await page.textContent('.empty'), /No favourites yet/);
+  await page.click('.empty >> text=Browse all recipes');
+  await page.waitForSelector('.row');
+  await page.click('.row:has-text("Salsa verde") .star');
+  await eventually(() => page.getAttribute('.row:has-text("Salsa verde") .star', 'aria-pressed'), 'true');
+  await page.click('.row:has-text("Herb salad") .dots');
+  await page.click('.menu >> text=Add to favourites');
+  const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('recipe-host:favourites:example/recipes')));
+  assert.deepEqual([saved.version, saved.favourites], [1, ['salsa-verde', 'herb-salad']]);
+  // A fresh load reads them back.
   await visit('#/', '.card');
   assert.deepEqual(await page.locator('main h2').allTextContents(), ['Sauces', 'Salads']);
-  await page.fill('input[type=search]', 'jalap');
-  await eventually(() => page.locator('.card:visible').count(), 0);
-  await page.fill('input[type=search]', 'serrano');
-  await eventually(() => page.locator('.card:visible strong').allTextContents(), ['Salsa verde']);
+  await page.click('.chip:has-text("Lunch")');
+  await eventually(() => page.locator('.card:visible strong').allTextContents(), ['Herb salad']);
+  // Unstarring on the recipe's page takes it off the front page.
+  await visit('#/recipe/herb-salad', '.steps li');
+  await eventually(() => page.textContent('.favourite span'), 'Favourite');
+  await page.click('.favourite');
+  await eventually(() => page.textContent('.favourite span'), 'Add to favourites');
+  await visit('#/', '.card');
+  assert.deepEqual(await page.locator('.card strong').allTextContents(), ['Salsa verde']);
+  // One key, named for the repository, so a ?repo= page keeps its own.
+  assert.equal(await page.evaluate(() => localStorage.length), 1);
+  await page.evaluate(() => localStorage.clear());
+});
+
+test('the header marks the current section and shows the logo', async () => {
+  const selected = () => page.locator('.pure-menu-selected').textContent();
+  await visit('#/', 'main h1:visible');
+  assert.equal(await selected(), 'Home');
+  await visit('#/recipe/salsa-verde', '.steps li');
+  assert.equal(await selected(), 'Recipes');
+  await visit('#/ingredient/coriander', 'table');
+  assert.equal(await selected(), 'Ingredients');
+  assert.equal(await page.locator('.logo').evaluate((img) => img.complete && img.naturalWidth > 0), true);
+  assert.match(await page.getAttribute('link[rel=icon]', 'href'), /logo\.svg$/);
+  // The links not selected are muted, never Pure's grey or its black for a
+  // visited selected link.
+  const muted = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--muted').trim());
+  const rgb = muted.match(/[0-9a-f]{2}/gi).map((h) => parseInt(h, 16));
+  for (const a of await page.locator('.pure-menu-item:not(.pure-menu-selected) a').all()) {
+    assert.equal(await a.evaluate((el) => getComputedStyle(el).color), `rgb(${rgb.join(', ')})`);
+  }
 });
 
 test('a recipe shows its facts, linked ingredients, swaps and notes', async () => {
@@ -180,7 +245,7 @@ async function publish(repoName, title, sha = 'a'.repeat(40), latest = sha) {
 test('?repo= shows another repository and sends its requests there', async () => {
   await publish('friend/cookbook', "Friend's cookbook");
   await visit('?repo=friend/cookbook#/recipe/salsa-verde', '.steps li');
-  assert.equal(await page.textContent('.pure-menu-heading'), "Friend's cookbook");
+  assert.equal(await page.textContent('.pure-menu-heading span'), "Friend's cookbook");
   assert.equal(await page.title(), "Salsa verde · Friend's cookbook");
   assert.equal(await page.getAttribute('text=Source on GitHub', 'href'), 'https://github.com/friend/cookbook/blob/main/recipes/sauces/salsa-verde.md');
   assert.match(await page.textContent('.site-footer'), /Recipes from friend\/cookbook\s+· Back to the recipes from example\/recipes/);
@@ -229,9 +294,9 @@ test('a pinned page lights the bell when a newer publish is out, and reloads int
   assert.equal(await page.isVisible('.bell.active'), false);
   await page.clock.runFor(30 * 60 * 1000);
   await page.locator('.bell.active').waitFor();
-  assert.equal(await page.textContent('.pure-menu-heading'), 'Old recipes');
+  assert.equal(await page.textContent('.pure-menu-heading span'), 'Old recipes');
   await page.click('.reload');
-  await eventually(() => page.textContent('.pure-menu-heading'), 'New recipes');
+  await eventually(() => page.textContent('.pure-menu-heading span'), 'New recipes');
   assert.equal(await page.isVisible('.bell.active'), false);
   assert.equal(await page.isVisible('.reload'), false);
   await page.waitForSelector('.steps li');
@@ -239,7 +304,7 @@ test('a pinned page lights the bell when a newer publish is out, and reloads int
 });
 
 test('a page that reads the newest commit has no bell', async () => {
-  await visit('#/', '.card');
+  await visit('#/recipes', '.row');
   assert.equal(await page.isVisible('.bell'), false);
 });
 

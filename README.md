@@ -8,8 +8,12 @@ made from the site's own buttons, arrives as a pull request.
 
 ## What the site does
 
-- **Recipes**, by category, searchable by title, tag and ingredient. Each has
-  a printable A5 recipe card (PDF).
+- **Home**: the reader's favourite recipes, by category. A star on the recipe
+  list or on a recipe's page adds one. Favourites are kept in the reader's
+  browser, separately for each recipe repository.
+- **Recipes**: every recipe, searchable by title, tag and ingredient, with
+  filter chips for each category and for the meals breakfast, lunch and dinner
+  (taken from the tags). Each recipe has a printable A5 recipe card (PDF).
 - **Ingredients**: a searchable list of every ingredient in every recipe. An
   ingredient's page lists the recipes it is in and how each one prepares it,
   its substitutions, and its notes.

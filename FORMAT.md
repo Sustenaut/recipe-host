@@ -53,7 +53,7 @@ photo_alt: The finished bourguignon over mashed potatoes
 |---|---|---|
 | `title` | yes (*checked*) | The recipe's name, in sentence case. |
 | `subtitle` | yes (*checked*) | One line: the main ingredient and method, or why it's good. |
-| `tags` | yes (*checked*) | Lowercase list: main ingredient, cuisine, technique, course. Searched on the front page. |
+| `tags` | yes (*checked*) | Lowercase list: main ingredient, cuisine, technique, course. Searched on the recipe lists; `breakfast`, `lunch` and `dinner` also put the recipe under that meal's filter. |
 | `date` | yes (*checked*) | When it was written or last substantially changed, `YYYY-MM-DD`. |
 | `serves` / `makes` | one of them (*checked*) | How many it feeds (`4`, `4–6`), or its yield when servings make no sense (`about 250 ml (1 cup)`). |
 | `prep`, `cook`, `rest`, `total` | when they apply | Hands-on time, time on the heat, waiting (marinating, chilling, proving), and start to finish when it isn't prep + cook. Written `15 min`, `1 h 30 min`, `24 h`. |
