@@ -50,7 +50,7 @@ Read README.md first for what this is. This file is for changing it.
 | `app/` | The site: `index.html` (views and dialogs), `app.js` (state and requests), `style.css`. |
 | `cards/recipe-card.typ` | The A5 card, fed plain-text JSON by `cardData`. |
 | `action.yml` | The GitHub Action that recipe repositories run. |
-| `test/` | `*.test.js`: unit tests, each building a small repository in a temp folder. `site.browser.js`: Playwright clicks through `test/fixtures/repo`. |
+| `test/` | `*.test.js`: unit tests, each building a small repository in a temp folder. `site.browser.js`: Playwright clicks through `test/fixtures/repo` and records the coverage of `app/app.js` (`v8-lcov.js`). |
 
 ## Checking a change
 

@@ -1,6 +1,7 @@
 // Browser test of the site: builds test/fixtures/repo, serves it locally
 // and clicks through every view in Chromium. Run with `npm run test:browser`
-// (after `npx playwright install chromium` once).
+// (after `npx playwright install chromium` once). It also writes
+// coverage/browser.lcov.info, the lines of app/app.js the clicks ran.
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -12,6 +13,7 @@ import { buildSite } from '../lib/build.js';
 import { pageHtml } from '../lib/page.js';
 import { loadConfig } from '../lib/repo.js';
 import { LOCAL_PAGE, serve } from '../lib/serve.js';
+import { v8ToLcov } from './v8-lcov.js';
 
 const FIXTURE = new URL('./fixtures/repo', import.meta.url).pathname;
 
@@ -32,9 +34,13 @@ before(async () => {
   page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
   page.on('pageerror', (err) => errors.push(err.message));
   page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  await page.coverage.startJSCoverage({ resetOnNavigation: false });
 });
 
 after(async () => {
+  const app = (await page.coverage.stopJSCoverage()).filter((e) => e.url.endsWith('/engine/app/app.js'));
+  fs.mkdirSync('coverage', { recursive: true });
+  fs.writeFileSync('coverage/browser.lcov.info', v8ToLcov(app, 'app/app.js'));
   await browser?.close();
   server?.close();
 });
