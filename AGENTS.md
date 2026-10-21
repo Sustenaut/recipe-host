@@ -56,7 +56,8 @@ Read README.md first for what this is. This file is for changing it.
 
 Run `npm test` and `npm run test:browser`, then preview a real repository with
 `node bin/recipe-host.js serve --root ../recipes` and click through the
-views you touched: the recipe list, a recipe, the ingredient list (search,
+views you touched: the home page of favourites, the recipe list (search,
+the type and meal filters, stars), a recipe, the ingredient list (search,
 the ⋯ menu near the top and the bottom of the window, merge), and an
 ingredient page (tick recipes, add a substitution). Check a narrow window
 too.

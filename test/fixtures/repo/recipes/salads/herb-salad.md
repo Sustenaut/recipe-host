@@ -1,7 +1,7 @@
 ---
 title: Herb salad
 subtitle: Leaves and herbs
-tags: [salad]
+tags: [salad, lunch]
 date: 2026-10-19
 serves: 2
 ---

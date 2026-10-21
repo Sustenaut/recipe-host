@@ -22,6 +22,7 @@
   --warn: #8a5a00;
   --warn-soft: #f6e6c2; /* seed, softened */
   --bad: #9b2c1f;
+  --seed: #e8a317; /* amber, for favourite stars */
   --font-sans: "Nunito Sans Variable", "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: "Nunito Variable", "Nunito", system-ui, sans-serif;
   --radius-control: 10px;
@@ -60,8 +61,9 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 800; line-height: 1.
   min-height: 2.75rem; padding: 0 1rem; font-weight: 700; border-radius: var(--radius-control);
   border: 1px solid var(--rule-strong); background: var(--surface); color: var(--ink);
 }
+a.pure-button { display: inline-flex; align-items: center; text-decoration: none; }
 .pure-button:hover:not([disabled]) { background-image: none; border-color: var(--primary); }
-.pure-button-primary, .pure-button-primary:hover:not([disabled]) { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.pure-button-primary, a.pure-button-primary, .pure-button-primary:hover:not([disabled]) { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .pure-form input[type=search], .pure-form input[type=text], .pure-form input:not([type]), .pure-form textarea {
   background: var(--surface); color: var(--ink); border: 1px solid var(--rule-strong); box-shadow: none;
   border-radius: var(--radius-control); padding: 0.6em 0.8em;
@@ -71,10 +73,18 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 800; line-height: 1.
 .pure-table { border: 1px solid var(--rule); width: 100%; background: var(--surface); }
 .pure-table thead { background: var(--sunken); color: var(--muted); }
 .pure-table-horizontal td, .pure-table-horizontal th { border-color: var(--rule); vertical-align: top; }
-.pure-menu-link, .pure-menu-heading { color: inherit; }
-.pure-menu-link:hover, .pure-menu-link:focus, .pure-menu-selected .pure-menu-link { background: var(--sunken); color: inherit; border-radius: var(--radius-control); }
-.pure-menu-selected .pure-menu-link { color: var(--link); font-weight: 700; }
-.pure-menu-heading { font-family: var(--font-display); font-weight: 800; text-transform: none; font-size: 1.2em; text-decoration: none; }
+/* Pure colours menu links #777, and a visited selected one #000 with a more
+   specific selector, which was unreadable on the dark header; :visited is
+   matched here too so neither applies. Links not selected are muted and
+   darken on hover; the selected one is green and bold. */
+.pure-menu-heading, .pure-menu-heading:visited { color: inherit; }
+.pure-menu-link, .pure-menu-link:visited { color: var(--muted); font-weight: 600; }
+.pure-menu-link:hover, .pure-menu-link:focus { background: var(--sunken); color: var(--ink); border-radius: var(--radius-control); }
+.pure-menu-selected > .pure-menu-link, .pure-menu-selected > .pure-menu-link:visited {
+  background: var(--sunken); color: var(--link); font-weight: 700; border-radius: var(--radius-control);
+}
+.site-header .pure-menu-heading { display: flex; align-items: center; gap: 0.5rem; font-family: var(--font-display); font-weight: 800; text-transform: none; font-size: 1.2em; text-decoration: none; }
+.logo { width: 2rem; height: 2rem; flex: none; }
 
 .site-header { background: var(--surface); border-bottom: 1px solid var(--rule); }
 .site-header nav { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 1rem; }
@@ -89,6 +99,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 800; line-height: 1.
 .site-footer { border-top: 1px solid var(--rule); margin-top: 3rem; padding: 1rem; color: var(--muted); }
 .lede, .subtitle, .crumbs, .count, .aliases { color: var(--muted); }
 .subtitle { font-size: 1.1rem; }
+.recipe .title-row h1 { margin-bottom: 0; }
 .title-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.8rem; }
@@ -103,15 +114,36 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 800; line-height: 1.
 
 /* The ingredient list: the ⋯ button shows on hover or focus, and always on
    touch screens, which cannot hover. */
-.ingredient-list { padding: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-panel); overflow: hidden; }
-.ingredient-list li { list-style: none; }
-.ingredient-list .row { display: flex; align-items: center; gap: 0.8rem; padding: 0.3rem 0.8rem; border-bottom: 1px solid var(--rule); }
-.ingredient-list li:last-child { border-bottom: none; }
-.ingredient-list .row:hover, .ingredient-list .row:focus-within, .ingredient-list .row.open { background: var(--sunken); }
-.ingredient-list .row > a { flex: 1; text-decoration: none; color: inherit; }
+.item-list { padding: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-panel); overflow: hidden; }
+.item-list li { list-style: none; }
+.item-list .row { display: flex; align-items: center; gap: 0.8rem; padding: 0.3rem 0.8rem; border-bottom: 1px solid var(--rule); }
+.item-list li:last-child { border-bottom: none; }
+.item-list .row:hover, .item-list .row:focus-within, .item-list .row.open { background: var(--sunken); }
+.item-list .row > a { flex: 1; text-decoration: none; color: inherit; }
 .dots { padding: 0.1rem 0.6rem; border: none; border-radius: var(--radius-control); background: transparent; color: inherit; font-size: 1.2rem; cursor: pointer; opacity: 0; }
 .row:hover .dots, .row:focus-within .dots, .row.open .dots { opacity: 1; }
 @media (hover: none) { .dots { opacity: 1; } }
+
+/* Favourite stars: an outline until pressed, then filled amber. */
+.star, .favourite { display: inline-flex; align-items: center; gap: 0.4rem; }
+.star { padding: 0.25rem; border: none; border-radius: var(--radius-control); background: transparent; color: var(--rule-strong); cursor: pointer; }
+.star:hover { color: var(--seed); }
+.star svg, .favourite svg { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+.star[aria-pressed="true"] svg, .favourite[aria-pressed="true"] svg { color: var(--seed); fill: var(--seed); }
+
+/* Filter chips above the recipe lists; pressed ones are filled. */
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.6rem 0; }
+.chips > span { min-width: 3.5rem; color: var(--muted); font-weight: 600; font-size: 0.9rem; }
+.chip {
+  padding: 0.25rem 0.8rem; border: 1px solid var(--rule-strong); border-radius: 999px; background: var(--surface);
+  color: var(--ink); font: inherit; font-size: 0.92rem; cursor: pointer;
+}
+.chip small { color: var(--muted); }
+.chip:hover { border-color: var(--primary); }
+.chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.chip[aria-pressed="true"] small { color: inherit; }
+.clear { margin-left: 0.6rem; padding: 0; border: none; background: none; color: var(--link); font: inherit; text-decoration: underline; text-decoration-color: var(--accent); cursor: pointer; }
+.empty { padding: 1rem 1.2rem; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-panel); }
 
 .menu {
   z-index: 10; width: auto; min-width: 15rem; padding: 0.3rem; background: var(--surface);

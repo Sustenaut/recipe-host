@@ -3,6 +3,22 @@
     {
       "category": "internal",
       "change": "npm test writes an LCOV coverage report, which CI gives SonarQube Cloud for its coverage gate."
+    },
+    {
+      "category": "added",
+      "change": "A home page of the reader's favourite recipes, starred on the recipe list or a recipe's page and kept in the browser for each recipe repository."
+    },
+    {
+      "category": "added",
+      "change": "The recipe list moves from #/ to #/recipes and works like the ingredient list, with filter chips for each category and for breakfast, lunch and dinner tags; #/ is now the favourites page."
+    },
+    {
+      "category": "added",
+      "change": "A logo and browser-tab icon: the Sustenaut disc with a steaming pot in place of the sprout."
+    },
+    {
+      "category": "fixed",
+      "change": "Header links not selected are muted brown instead of Pure CSS grey, and a visited selected link is no longer black on the dark header."
     }
   ],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."

@@ -13,6 +13,32 @@ const asked = new URLSearchParams(location.search).get('repo');
 const repo = /^[\w.-]+\/[\w.-]+$/.test(asked ?? '') ? asked : config.repo;
 const github = `https://github.com/${repo}`;
 const FACT_LABELS = { serves: 'Serves', makes: 'Makes', prep: 'Prep', cook: 'Cook', rest: 'Rest', total: 'Total' };
+// The header's links: label, address, and the views that light it up.
+const NAV = [['Home', '#/', ['home']], ['Recipes', '#/recipes', ['recipes', 'recipe']], ['Ingredients', '#/ingredients', ['ingredients', 'ingredient']]];
+// Tags that name a meal; the recipe lists filter on them next to the categories.
+const MEALS = ['breakfast', 'lunch', 'dinner'];
+
+// Favourites are kept per repository, so a page showing `?repo=` has its own.
+// A store is `{ load(): Promise<string[]>, save(slugs): Promise<void> }`;
+// load() may reject (offline), and the page then keeps what it shows. Today
+// the only store is this browser's localStorage; favouritesStore() is where a
+// store kept elsewhere for a signed-in reader plugs in.
+function localFavourites(name) {
+  const key = `recipe-host:favourites:${name}`;
+  return {
+    async load() {
+      const saved = JSON.parse(localStorage.getItem(key) ?? 'null');
+      return Array.isArray(saved?.favourites) ? saved.favourites.filter((s) => typeof s === 'string') : [];
+    },
+    async save(slugs) {
+      localStorage.setItem(key, JSON.stringify({ version: 1, favourites: slugs, updated: new Date().toISOString() }));
+    },
+  };
+}
+
+function favouritesStore(settings, name) {
+  return localFavourites(name);
+}
 
 // Links in recipe Markdown point at repository files; on the site they
 // become routes. Raw HTML is dropped, so x-html only ever shows Markdown.
@@ -91,10 +117,11 @@ document.addEventListener('alpine:init', () => {
     config,
     repo,
     github,
+    NAV,
     base: null,
     index: null,
     error: null,
-    route: { view: 'recipes', arg: null },
+    route: { view: 'home', arg: null },
     recipe: null,
     notFound: false,
     q: '',
@@ -102,6 +129,9 @@ document.addEventListener('alpine:init', () => {
     menu: null,
     dialog: null,
     form: {},
+    filters: [],
+    favourites: [],
+    store: favouritesStore(config, repo),
 
     async init() {
       try {
@@ -115,6 +145,8 @@ document.addEventListener('alpine:init', () => {
       window.addEventListener('hashchange', () => this.show());
       this.show();
       this.watchForUpdates();
+      // An unreadable store leaves no favourites shown rather than failing the page.
+      this.favourites = await this.store.load().catch(() => this.favourites);
     },
 
     // ---- newer publishes
@@ -173,7 +205,7 @@ document.addEventListener('alpine:init', () => {
 
     async go() {
       const [, view = '', arg] = (location.hash || '#/').split('/');
-      this.route = { view: view || 'recipes', arg: arg && decodeURIComponent(arg) };
+      this.route = { view: view || 'home', arg: arg && decodeURIComponent(arg) };
       Object.assign(this, { q: '', selected: [], menu: null, dialog: null, recipe: null, notFound: false });
       if (this.route.view === 'recipe') {
         if (this.index.recipes.some((r) => r.slug === this.route.arg)) {
@@ -181,8 +213,8 @@ document.addEventListener('alpine:init', () => {
         } else this.notFound = true;
       }
       if (this.route.view === 'ingredient' && !this.ingredient) this.notFound = true;
-      if (!['recipes', 'recipe', 'ingredients', 'ingredient'].includes(this.route.view)) this.notFound = true;
-      const name = this.recipe?.title ?? this.ingredient?.name ?? (this.route.view === 'ingredients' ? 'Ingredients' : null);
+      if (!NAV.some(([, , views]) => views.includes(this.route.view))) this.notFound = true;
+      const name = this.recipe?.title ?? this.ingredient?.name ?? { recipes: 'All recipes', ingredients: 'Ingredients' }[this.route.view];
       document.title = name ? `${name} · ${this.index.site.title}` : this.index.site.title;
       window.scrollTo(0, 0);
     },
@@ -204,15 +236,38 @@ document.addEventListener('alpine:init', () => {
     recipeTitle(slug) { return this.index.recipes.find((r) => r.slug === slug)?.title ?? slug; },
     recipeCount: (i) => new Set(i.uses.map((u) => u.recipe)).size,
 
-    // ---- recipes view
+    // ---- favourites and the recipe lists
     get categories() {
       return [...new Set([...this.index.site.categories, ...this.index.recipes.map((r) => r.category).sort()])]
         .filter((c) => this.index.recipes.some((r) => r.category === c));
     },
-    recipesIn(category) {
+    get favouriteRecipes() { return this.index.recipes.filter((r) => this.favourites.includes(r.slug)); },
+    isFavourite(slug) { return this.favourites.includes(slug); },
+    toggleFavourite(slug) {
+      this.favourites = this.isFavourite(slug) ? this.favourites.filter((s) => s !== slug) : [...this.favourites, slug];
+      // A failed save keeps the change on screen; the next one saves it again.
+      this.store.save(this.favourites).catch(() => {});
+    },
+    // Filter chips: one group for the categories, one for the meals. Ticking
+    // several in a group shows recipes matching any of them; both groups
+    // together show recipes matching one of each.
+    get filterGroups() { return [['Type', this.categories], ['Meal', MEALS]]; },
+    toggleFilter(key) {
+      this.filters = this.filters.includes(key) ? this.filters.filter((f) => f !== key) : [...this.filters, key];
+    },
+    hasKey: (r, key) => r.category === key || r.tags.includes(key),
+    countFor(key, recipes) { return this.searched(recipes).filter((r) => this.hasKey(r, key)).length; },
+    searched(recipes) {
       const q = normalize(this.q.trim());
-      return this.index.recipes.filter((r) => r.category === category
-        && (!q || normalize([r.title, r.subtitle, ...r.tags, ...r.ingredients.map((id) => this.ingredientName(id))].join(' ')).includes(q)));
+      return recipes.filter((r) => !q || normalize([r.title, r.subtitle, ...r.tags, ...r.ingredients.map((id) => this.ingredientName(id))].join(' ')).includes(q));
+    },
+    // The recipes left after the search and the filters, by title.
+    shown(recipes) {
+      const types = this.filters.filter((f) => !MEALS.includes(f));
+      const meals = this.filters.filter((f) => MEALS.includes(f));
+      return this.searched(recipes)
+        .filter((r) => (!types.length || types.includes(r.category)) && (!meals.length || meals.some((m) => r.tags.includes(m))))
+        .sort((a, b) => a.title.localeCompare(b.title));
     },
     // Substitution notes that apply to one ingredient line of this recipe.
     swapsFor(item) {
@@ -237,8 +292,9 @@ document.addEventListener('alpine:init', () => {
       }
       return [...byRecipe.values()];
     },
-    toggleMenu(ingredient, button) {
-      this.menu = this.menu?.id === ingredient.id ? null : { id: ingredient.id, ingredient, button };
+    // The ⋯ menu of a row on the recipe or ingredient list.
+    toggleMenu(id, item, button) {
+      this.menu = this.menu?.id === id ? null : { id, item, button };
     },
 
     // ---- dialogs; each ends in a GitHub request

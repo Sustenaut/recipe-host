@@ -5,7 +5,8 @@
   comes from jsDelivr at pinned versions. The views are Alpine.js markup
   over the state in app.js:
 
-    #/                  recipes by category, with search
+    #/                  the reader's favourite recipes, by category
+    #/recipes           every recipe, with search and type and meal filters
     #/recipe/<slug>     one recipe
     #/ingredients       the master ingredient list, with search
     #/ingredient/<id>   one ingredient, the recipes it is in, and its notes
@@ -16,6 +17,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{title}}</title>
 <meta name="description" content="{{description}}">
+<link rel="icon" href="{{engine}}logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{engine}}touch-icon.png">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 {{preload}}
@@ -32,10 +35,11 @@
 <body x-data="site">
 <header class="site-header">
   <nav class="container pure-menu pure-menu-horizontal">
-    <a href="#/" class="pure-menu-heading" x-text="title">{{title}}</a>
+    <a href="#/" class="pure-menu-heading"><img class="logo" src="{{engine}}logo.svg" alt=""> <span x-text="title">{{title}}</span></a>
     <ul class="pure-menu-list">
-      <li class="pure-menu-item" :class="{ 'pure-menu-selected': !route.view.startsWith('ingredient') }"><a href="#/" class="pure-menu-link" :aria-current="route.view.startsWith('ingredient') ? null : 'page'">Recipes</a></li>
-      <li class="pure-menu-item" :class="{ 'pure-menu-selected': route.view.startsWith('ingredient') }"><a href="#/ingredients" class="pure-menu-link" :aria-current="route.view.startsWith('ingredient') ? 'page' : null">Ingredients</a></li>
+      <template x-for="[label, href, views] in NAV">
+        <li class="pure-menu-item" :class="{ 'pure-menu-selected': views.includes(route.view) }"><a :href="href" class="pure-menu-link" :aria-current="views.includes(route.view) ? 'page' : null" x-text="label"></a></li>
+      </template>
     </ul>
     <div class="updates" x-show="pinned" x-cloak>
       <span class="bell" :class="{ active: update }" role="status"
@@ -56,34 +60,101 @@
   <p x-show="!index && !error" class="lede">Loading…</p>
   <article x-show="error" x-cloak><h1>Something went wrong</h1><p x-text="error"></p></article>
 
-  <!-- Recipes, by category -->
-  <template x-if="index && route.view === 'recipes'">
+  <!-- Favourites, by category -->
+  <template x-if="index && route.view === 'home'">
     <section>
       <h1 x-text="index.site.title">Recipes</h1>
       <p class="lede" x-text="index.site.description"></p>
-      <input type="search" class="pure-input-1" x-model="q" placeholder="Search recipes, tags and ingredients" aria-label="Search recipes">
-      <template x-for="c in categories" :key="c">
-        <section x-show="recipesIn(c).length">
-          <h2 x-text="titleCase(c)">Category</h2>
-          <div class="cards">
-            <template x-for="r in recipesIn(c)" :key="r.slug">
-              <a class="card" :href="'#/recipe/' + r.slug">
-                <img x-show="r.photo" :src="r.photo && dataUrl(r.photo)" alt="" loading="lazy">
-                <strong x-text="r.title"></strong><span x-text="r.subtitle"></span>
-              </a>
-            </template>
-          </div>
-        </section>
+      <template x-if="favouriteRecipes.length">
+        <div>
+          <input type="search" class="pure-input-1" x-model="q" placeholder="Search your favourites" aria-label="Search your favourites">
+          <template x-for="[group, keys] in filterGroups">
+            <div class="chips" role="group" :aria-label="group">
+              <span x-text="group"></span>
+              <template x-for="key in keys" :key="key">
+                <button type="button" class="chip" :aria-pressed="filters.includes(key)" @click="toggleFilter(key)">
+                  <span x-text="titleCase(key)"></span> <small x-text="countFor(key, favouriteRecipes)"></small>
+                </button>
+              </template>
+            </div>
+          </template>
+          <template x-for="c in categories" :key="c">
+            <section x-show="shown(favouriteRecipes).some((r) => r.category === c)">
+              <h2 x-text="titleCase(c)">Category</h2>
+              <div class="cards">
+                <template x-for="r in shown(favouriteRecipes).filter((r) => r.category === c)" :key="r.slug">
+                  <a class="card" :href="'#/recipe/' + r.slug">
+                    <img x-show="r.photo" :src="r.photo && dataUrl(r.photo)" alt="" loading="lazy">
+                    <strong x-text="r.title"></strong><span x-text="r.subtitle"></span>
+                  </a>
+                </template>
+              </div>
+            </section>
+          </template>
+          <p x-show="!shown(favouriteRecipes).length">No favourite matches. <a href="#/recipes">Look through all the recipes</a>.</p>
+        </div>
       </template>
-      <p x-show="!categories.some((c) => recipesIn(c).length)">No recipe matches.</p>
+      <div class="empty" x-show="!favouriteRecipes.length">
+        <p><strong>No favourites yet.</strong> Star the recipes you cook most on the <a href="#/recipes">recipe list</a> or on a recipe's page, and they gather here.</p>
+        <p><a class="pure-button pure-button-primary" href="#/recipes">Browse all recipes</a></p>
+      </div>
+    </section>
+  </template>
+
+  <!-- Every recipe, filtered like the ingredient list -->
+  <template x-if="index && route.view === 'recipes'">
+    <section>
+      <h1>All recipes</h1>
+      <p class="lede">Every recipe in the collection. Star the ones you want on the home page, and pick types and meals to narrow the list.</p>
+      <input type="search" class="pure-input-1" x-model="q" placeholder="Search recipes, tags and ingredients" aria-label="Search recipes" x-init="$el.focus()">
+      <template x-for="[group, keys] in filterGroups">
+        <div class="chips" role="group" :aria-label="group">
+          <span x-text="group"></span>
+          <template x-for="key in keys" :key="key">
+            <button type="button" class="chip" :aria-pressed="filters.includes(key)" @click="toggleFilter(key)">
+              <span x-text="titleCase(key)"></span> <small x-text="countFor(key, index.recipes)"></small>
+            </button>
+          </template>
+        </div>
+      </template>
+      <p class="count">
+        <span x-text="plural(shown(index.recipes).length, 'recipe', 'recipes')"></span>
+        <button type="button" class="clear" x-show="filters.length" @click="filters = []">Clear filters</button>
+      </p>
+      <ul class="item-list">
+        <template x-for="r in shown(index.recipes)" :key="r.slug">
+          <li class="row" :class="{ open: menu?.id === r.slug }">
+            <button type="button" class="star" :aria-pressed="isFavourite(r.slug)" :aria-label="'Favourite ' + r.title" @click="toggleFavourite(r.slug)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3L2.9 9.5l6.3-.9z"/></svg>
+            </button>
+            <a :href="'#/recipe/' + r.slug"><span x-text="r.title"></span> <small class="aliases" x-text="r.subtitle"></small></a>
+            <small x-text="titleCase(r.category)"></small>
+            <button class="dots" :aria-label="'More for ' + r.title" aria-haspopup="menu" :aria-expanded="menu?.id === r.slug" @click="toggleMenu(r.slug, r, $el)">⋯</button>
+          </li>
+        </template>
+        <li x-show="!shown(index.recipes).length">No recipe matches.</li>
+      </ul>
+      <div class="menu pure-menu" x-show="menu" x-cloak x-anchor.bottom-end.offset.4="menu?.button"
+           @click.outside="$event.target.closest('.dots') || (menu = null)" @keydown.escape.window="menu = null">
+        <ul class="pure-menu-list" role="menu">
+          <li class="pure-menu-item"><button class="pure-menu-link" role="menuitem" @click="toggleFavourite(menu.id); menu = null" x-text="isFavourite(menu?.id) ? 'Remove from favourites' : 'Add to favourites'"></button></li>
+          <li class="pure-menu-item"><button class="pure-menu-link" role="menuitem" @click="location.hash = '#/recipe/' + menu.id">Open</button></li>
+        </ul>
+      </div>
     </section>
   </template>
 
   <!-- One recipe -->
   <template x-if="index && route.view === 'recipe' && recipe">
     <article class="recipe">
-      <p class="crumbs"><a href="#/" x-text="index.site.title"></a> / <span x-text="titleCase(recipe.category)"></span></p>
-      <h1 x-text="recipe.title">Recipe</h1>
+      <p class="crumbs"><a href="#/recipes">All recipes</a> / <span x-text="titleCase(recipe.category)"></span></p>
+      <div class="title-row">
+        <h1 x-text="recipe.title">Recipe</h1>
+        <button type="button" class="pure-button favourite" :aria-pressed="isFavourite(recipe.slug)" @click="toggleFavourite(recipe.slug)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3L2.9 9.5l6.3-.9z"/></svg>
+          <span x-text="isFavourite(recipe.slug) ? 'Favourite' : 'Add to favourites'"></span>
+        </button>
+      </div>
       <p class="subtitle" x-text="recipe.subtitle"></p>
       <p class="facts">
         <template x-for="[label, value] in facts(recipe)"><span><strong x-text="label"></strong> <span x-text="value"></span></span></template>
@@ -134,12 +205,12 @@
       <p class="lede">Every ingredient in every recipe. Open one to see the recipes it is in, how each one prepares it, and what can replace it.</p>
       <input type="search" class="pure-input-1" x-model="q" placeholder="Search ingredients" aria-label="Search ingredients" x-init="$el.focus()">
       <p class="count" x-text="plural(ingredients.length, 'ingredient', 'ingredients')"></p>
-      <ul class="ingredient-list">
+      <ul class="item-list">
         <template x-for="i in ingredients" :key="i.id">
           <li class="row" :class="{ open: menu?.id === i.id }">
             <a :href="'#/ingredient/' + i.id"><span x-text="i.name"></span> <small class="aliases" x-text="i.aliases.join(', ')"></small></a>
             <small x-text="plural(recipeCount(i), 'recipe', 'recipes')"></small>
-            <button class="dots" :aria-label="'More for ' + i.name" aria-haspopup="menu" :aria-expanded="menu?.id === i.id" @click="toggleMenu(i, $el)">⋯</button>
+            <button class="dots" :aria-label="'More for ' + i.name" aria-haspopup="menu" :aria-expanded="menu?.id === i.id" @click="toggleMenu(i.id, i, $el)">⋯</button>
           </li>
         </template>
         <li x-show="!ingredients.length">No ingredient matches. <a href="#" @click.prevent="openAdd(q)">Add it</a>?</li>
@@ -147,7 +218,7 @@
       <div class="menu pure-menu" x-show="menu" x-cloak x-anchor.bottom-end.offset.4="menu?.button"
            @click.outside="$event.target.closest('.dots') || (menu = null)" @keydown.escape.window="menu = null">
         <ul class="pure-menu-list" role="menu">
-          <li class="pure-menu-item"><button class="pure-menu-link" role="menuitem" @click="openMerge(menu.ingredient)">Merge into another ingredient…</button></li>
+          <li class="pure-menu-item"><button class="pure-menu-link" role="menuitem" @click="openMerge(menu.item)">Merge into another ingredient…</button></li>
           <li class="pure-menu-item"><button class="pure-menu-link" role="menuitem" @click="location.hash = '#/ingredient/' + menu.id">Open</button></li>
         </ul>
       </div>
@@ -200,7 +271,7 @@
     </section>
   </template>
 
-  <article x-show="index && notFound" x-cloak><h1>Not found</h1><p>There is nothing here. <a href="#/">Back to the recipes</a>.</p></article>
+  <article x-show="index && notFound" x-cloak><h1>Not found</h1><p>There is nothing here. <a href="#/recipes">Back to the recipes</a>.</p></article>
 </main>
 
 <footer class="container site-footer"><small>
