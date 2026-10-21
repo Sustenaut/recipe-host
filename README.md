@@ -10,7 +10,8 @@ made from the site's own buttons, arrives as a pull request.
 
 - **Home**: the reader's favourite recipes, by category. A star on the recipe
   list or on a recipe's page adds one. Favourites are kept in the reader's
-  browser, separately for each recipe repository.
+  browser, separately for each recipe repository, or, on a site with sign-in,
+  in the reader's own storage (below).
 - **Recipes**: every recipe, searchable by title, tag and ingredient, with
   filter chips for each category and for the meals breakfast, lunch and dinner
   (taken from the tags). Each recipe has a printable A5 recipe card (PDF).
@@ -139,6 +140,36 @@ repository's `site` branch instead, and its buttons open requests there.
 Pull requests opened by the request workflow use the workflow's own token,
 and GitHub does not run other workflows for those, so the request workflow
 checks the change itself before it opens the pull request.
+
+## Sign-in and favourites that follow the reader
+
+A site can sign readers in with any OpenID Connect provider and keep each
+reader's favourites in their own S3 bucket. Both are off unless
+`recipe-host.yml` turns them on (see [FORMAT.md](FORMAT.md)):
+
+```yaml
+login:
+  issuer: https://auth.sustenaut.eu/realms/sustenaut
+  client: recipes        # a public client with PKCE, redirecting to the site
+  required: true         # show nothing until signed in; false: sign-in only for favourites
+favourites: https://presign.sustenaut.eu/
+```
+
+- The page uses the code flow with PKCE (oidc-client-ts), comes back to the
+  same view and `?repo=`, keeps its tokens for the tab only and renews them
+  with the refresh token.
+- The favourites service answers `POST v1/presign` with the reader's access
+  token and `{"method": "GET" | "PUT", "key": "favourites/<owner>/<name>.json"}`
+  with `{"url", "expires"}`: a link, valid a few minutes, to that file in
+  the bucket the reader registered. The page never holds bucket keys. A
+  missing file is a 404, and the page then starts from what the browser kept.
+- `required: true` hides the site, not the recipes: those stay public on
+  GitHub and jsDelivr.
+
+`recipe-host serve --mock-login` previews a site this way without the real
+services: [lib/mock-login.js](lib/mock-login.js) stands in for the sign-in
+(two test accounts instead of a wallet) and for the favourites service and
+bucket, in memory, on the preview's own origin.
 
 ## Working on recipes locally
 

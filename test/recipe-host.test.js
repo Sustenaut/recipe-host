@@ -230,6 +230,33 @@ test('a page pinned to one data commit preloads its index and skips asking GitHu
   assert.match(latest, /"data":null/);
 });
 
+test('a site with login loads the sign-in library and passes its settings to the page', () => {
+  const config = { title: 'R', description: '', repo: 'o/r', branch: 'main', login: { issuer: 'https://auth.example/realms/x', client: 'recipes', required: true }, favourites: 'https://store.example/' };
+  const page = pageHtml(config);
+  assert.match(page, /<script defer src="https:\/\/cdn.jsdelivr.net\/npm\/oidc-client-ts@3.5.0\/dist\/browser\/oidc-client-ts.min.js"><\/script>/);
+  assert.match(page, /"login":\{"issuer":"https:\/\/auth.example\/realms\/x","client":"recipes","required":true\},"favourites":"https:\/\/store.example\/"/);
+  const preview = pageHtml(config, { login: { issuer: '/mock/x', client: 'recipes', required: false }, favourites: '/mock/presign/' });
+  assert.match(preview, /"issuer":"\/mock\/x"/);
+  const open = pageHtml({ ...config, login: null, favourites: null });
+  assert.doesNotMatch(open, /oidc-client-ts/);
+  assert.match(open, /"login":null,"favourites":null/);
+});
+
+test('login settings in recipe-host.yml are read and checked', () => {
+  const good = loadRepo(makeRepo({ 'recipe-host.yml': 'login:\n  issuer: https://auth.sustenaut.eu/realms/sustenaut\n  client: recipes\n  required: true\nfavourites: https://presign.sustenaut.eu/\n' }));
+  assert.deepEqual(good.errors, []);
+  assert.deepEqual(good.config.login, { issuer: 'https://auth.sustenaut.eu/realms/sustenaut', client: 'recipes', required: true });
+  assert.equal(good.config.favourites, 'https://presign.sustenaut.eu/');
+  assert.equal(loadRepo(makeRepo()).config.login, null);
+  const bad = loadRepo(makeRepo({ 'recipe-host.yml': 'login:\n  issuer: http://auth.example\nfavourites: nowhere\n' }));
+  assert.equal(bad.errors.length, 3);
+  assert.match(bad.errors[0], /login.issuer must be the https:\/\/ address/);
+  assert.match(bad.errors[1], /login.client must name the client/);
+  assert.match(bad.errors[2], /favourites must be the https:\/\/ address/);
+  const alone = loadRepo(makeRepo({ 'recipe-host.yml': 'favourites: https://presign.sustenaut.eu/\n' }));
+  assert.match(alone.errors[0], /favourites needs login/);
+});
+
 test('typst is found by absolute path, from $TYPST or else PATH, and never from a relative PATH entry', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typst-'));
   const bin = path.join(dir, process.platform === 'win32' ? 'typst.exe' : 'typst');

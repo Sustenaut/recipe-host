@@ -96,6 +96,10 @@ a.pure-button { display: inline-flex; align-items: center; text-decoration: none
 .bell.active { color: var(--link); }
 .bell.active::after { content: ""; position: absolute; top: 0.3rem; right: 0.3rem; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
 .reload { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.25rem; }
+/* Who is signed in, on a site with login. */
+.account { display: flex; align-items: center; gap: 0.5rem; padding-left: 0.5rem; }
+.account .who { color: var(--muted); font-weight: 600; }
+.sign-in { max-width: 32rem; margin: 3rem auto; }
 .site-footer { border-top: 1px solid var(--rule); margin-top: 3rem; padding: 1rem; color: var(--muted); }
 .lede, .subtitle, .crumbs, .count, .aliases { color: var(--muted); }
 .subtitle { font-size: 1.1rem; }
@@ -181,4 +185,6 @@ dialog footer { display: flex; justify-content: flex-end; gap: 0.6rem; margin-to
   .recipe-body { grid-template-columns: 1fr; gap: 0; }
   .aliases { display: none; }
   .site-header nav { flex-wrap: wrap; }
+  .account { margin-left: auto; }
+  .account .who { display: none; }
 }

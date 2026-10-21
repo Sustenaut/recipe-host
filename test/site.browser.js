@@ -13,6 +13,7 @@ import { buildSite } from '../lib/build.js';
 import { pageHtml } from '../lib/page.js';
 import { loadConfig } from '../lib/repo.js';
 import { LOCAL_PAGE, serve } from '../lib/serve.js';
+import { MOCK_ACCOUNTS, mockLogin, mockPageSettings } from '../lib/mock-login.js';
 import { v8ToLcov } from './v8-lcov.js';
 
 const FIXTURE = new URL('./fixtures/repo', import.meta.url).pathname;
@@ -270,6 +271,87 @@ test('?repo= naming a repository with nothing published says so', async () => {
   assert.match(await page.textContent('article'), /Found no published recipes in nobody\/nothing\./);
   await page.unrouteAll();
   errors.splice(before); // the browser logs the 404s themselves
+});
+
+// The same fixture on a second origin, signing in through the mock
+// Sustenaut sign-in and keeping favourites in the mock bucket.
+test('a site with login asks readers to sign in and keeps their favourites in their bucket', async () => {
+  const loginOut = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-login-'));
+  buildSite(FIXTURE, loginOut, { cards: false, page: { ...LOCAL_PAGE, ...mockPageSettings() }, log: () => {} });
+  const mock = mockLogin();
+  const loginServer = serve(loginOut, { mock }).listen(0);
+  const site = `http://localhost:${loginServer.address().port}/`;
+  const [anna, ben] = MOCK_ACCOUNTS;
+  const saved = (account) => {
+    const file = mock.bucket.get(`/mock/bucket/recipes/${account.sub}/favourites/example/recipes.json`);
+    return file && JSON.parse(file.body).favourites;
+  };
+  const logged = errors.length;
+  try {
+    // Nothing shows before signing in, and the sign-in comes back to the
+    // same address, ?repo= and view included.
+    await page.goto('about:blank');
+    await page.goto(`${site}?repo=example/recipes#/recipes`);
+    await page.waitForSelector('.sign-in button');
+    assert.equal(await page.isVisible('.row'), false);
+    await page.click('.sign-in button');
+    await page.click(`text=Sign in as ${anna.name}`);
+    await page.waitForSelector('.row');
+    assert.equal(page.url(), `${site}?repo=example/recipes#/recipes`);
+    assert.equal(await page.textContent('.account .who'), anna.name);
+
+    // A star is saved in Anna's file, not in the browser.
+    await page.click('.row:has-text("Salsa verde") .star');
+    await eventually(() => saved(anna), ['salsa-verde']);
+    assert.equal(await page.evaluate(() => localStorage.length), 0);
+    await page.goto('about:blank');
+    await page.goto(`${site}#/`);
+    await page.waitForSelector('.card');
+    assert.deepEqual(await page.locator('.card strong').allTextContents(), ['Salsa verde']);
+
+    // Signing out goes back to the sign-in screen.
+    await page.click('.account button');
+    await page.waitForSelector('.sign-in button');
+
+    // Ben starts from what this browser kept, and that moves to his file.
+    await page.evaluate(() => localStorage.setItem('recipe-host:favourites:example/recipes', JSON.stringify({ version: 1, favourites: ['herb-salad'] })));
+    await page.click('.sign-in button');
+    await page.click(`text=Sign in as ${ben.name}`);
+    await page.waitForSelector('.card');
+    assert.deepEqual(await page.locator('.card strong').allTextContents(), ['Herb salad']);
+    assert.deepEqual(saved(ben), ['herb-salad']);
+    assert.deepEqual(saved(anna), ['salsa-verde']);
+    await page.evaluate(() => localStorage.clear());
+
+    // An expired sign-in is renewed with the refresh token, on opening the
+    // page and before saving.
+    mock.settings.accessSeconds = 1;
+    await page.click('.account button');
+    await page.click('.sign-in button');
+    await page.click(`text=Sign in as ${ben.name}`);
+    await page.waitForSelector('.card');
+    await page.waitForTimeout(1500);
+    await page.goto('about:blank');
+    await page.goto(`${site}#/recipes`);
+    await page.waitForSelector('.row');
+    assert.equal(await page.textContent('.account .who'), ben.name);
+    await page.waitForTimeout(1500);
+    await page.click('.row:has-text("Salsa verde") .star');
+    await eventually(() => saved(ben), ['herb-salad', 'salsa-verde']);
+    mock.settings.accessSeconds = 300;
+    await page.click('.account button');
+
+    // Cancelling at the sign-in page says so.
+    await page.waitForSelector('.sign-in button');
+    await page.click('.sign-in button');
+    await page.click('text=Cancel');
+    await eventually(() => page.textContent('.sign-in .alert'), 'Sign-in was cancelled.');
+    // The browser logs the 404 of a favourites file not yet written.
+    assert.ok(errors.slice(logged).every((e) => e.includes('404')));
+    errors.splice(logged);
+  } finally {
+    loginServer.close();
+  }
 });
 
 test('a pinned page lights the bell when a newer publish is out, and reloads into it', async () => {
