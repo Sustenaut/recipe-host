@@ -23,6 +23,18 @@
     {
       "category": "internal",
       "change": "The browser tests record which lines of app/app.js they run, and CI runs them in the test job so SonarQube Cloud counts that coverage; test/ is analysed as test code."
+    },
+    {
+      "category": "added",
+      "change": "Sign-in for readers: a login section in recipe-host.yml (an OpenID Connect issuer and client, and whether reading needs it) signs readers in with the code flow and PKCE, coming back to the same view and ?repo=. Sites without it are unchanged."
+    },
+    {
+      "category": "added",
+      "change": "Favourites in the signed-in reader's own bucket: favourites in recipe-host.yml names a service that hands out short-lived links to one file per repository, so they follow the reader between browsers. What the browser kept moves there at the first sign-in."
+    },
+    {
+      "category": "added",
+      "change": "recipe-host serve --mock-login previews a site with a local stand-in for the Sustenaut sign-in and favourites service, with test accounts and an in-memory bucket."
     }
   ],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."

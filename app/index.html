@@ -28,6 +28,7 @@
 <link rel="stylesheet" href="{{engine}}style.css">
 <script>window.RECIPE_HOST = {{config}};</script>
 <script defer src="{{marked}}"></script>
+{{oidc}}
 <script defer src="{{engine}}app.js"></script>
 <script defer src="{{anchor}}"></script>
 <script defer src="{{alpine}}"></script>
@@ -52,12 +53,26 @@
         Reload
       </button>
     </div>
+    <div class="account" x-show="signsIn && !signInNeeded" x-cloak>
+      <template x-if="account">
+        <span><span class="who" x-text="account.name"></span> <button type="button" class="pure-button" @click="signOut()">Sign out</button></span>
+      </template>
+      <button type="button" class="pure-button" x-show="!account" @click="signIn()">Sign in</button>
+    </div>
   </nav>
 </header>
 
 <main class="container pure-form">
   <noscript>This recipe site needs JavaScript. The recipes are also on <a href="https://github.com/{{repo}}">GitHub</a>.</noscript>
-  <p x-show="!index && !error" class="lede">Loading…</p>
+  <p x-show="!index && !error && !signInNeeded" class="lede">Loading…</p>
+  <template x-if="signInNeeded">
+    <article class="sign-in">
+      <h1>Sign in</h1>
+      <p>Sign in to see these recipes and keep your favourites.</p>
+      <p class="alert" x-show="signInError" x-text="signInError"></p>
+      <button type="button" class="pure-button pure-button-primary" @click="signIn()">Sign in</button>
+    </article>
+  </template>
   <article x-show="error" x-cloak><h1>Something went wrong</h1><p x-text="error"></p></article>
 
   <!-- Favourites, by category -->

@@ -2,7 +2,7 @@
 // on the URL hash, rendering Markdown, and turning the site's buttons into
 // GitHub requests. The markup is in index.html; Alpine.js connects the two.
 
-/* global Alpine, marked */
+/* global Alpine, marked, oidc */
 
 const config = window.RECIPE_HOST;
 
@@ -20,24 +20,111 @@ const MEALS = ['breakfast', 'lunch', 'dinner'];
 
 // Favourites are kept per repository, so a page showing `?repo=` has its own.
 // A store is `{ load(): Promise<string[]>, save(slugs): Promise<void> }`;
-// load() may reject (offline), and the page then keeps what it shows. Today
-// the only store is this browser's localStorage; favouritesStore() is where a
-// store kept elsewhere for a signed-in reader plugs in.
+// load() may reject (offline), and the page then keeps what it shows. Every
+// store keeps the same document.
+const favouritesDocument = (slugs) => JSON.stringify({ version: 1, favourites: slugs, updated: new Date().toISOString() });
+const readFavourites = (saved) => (Array.isArray(saved?.favourites) ? saved.favourites.filter((s) => typeof s === 'string') : []);
+
+// This browser's localStorage, for a reader who is not signed in.
 function localFavourites(name) {
   const key = `recipe-host:favourites:${name}`;
   return {
     async load() {
-      const saved = JSON.parse(localStorage.getItem(key) ?? 'null');
-      return Array.isArray(saved?.favourites) ? saved.favourites.filter((s) => typeof s === 'string') : [];
+      return readFavourites(JSON.parse(localStorage.getItem(key) ?? 'null'));
     },
     async save(slugs) {
-      localStorage.setItem(key, JSON.stringify({ version: 1, favourites: slugs, updated: new Date().toISOString() }));
+      localStorage.setItem(key, favouritesDocument(slugs));
     },
   };
 }
 
-function favouritesStore(settings, name) {
-  return localFavourites(name);
+// A file in the signed-in reader's own bucket, reached through the
+// favourites service (`favourites` in recipe-host.yml). The service checks
+// the access token and answers a link valid for a few minutes; the page
+// never holds the bucket's keys. The first time, what this browser kept is
+// carried over.
+function remoteFavourites(service, name, token, local) {
+  const key = `favourites/${name}.json`;
+  async function link(method) {
+    const res = await fetch(new URL('v1/presign', service), {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await token()}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ method, key }),
+    });
+    if (!res.ok) throw new Error(`The favourites service answered ${res.status}`);
+    return (await res.json()).url;
+  }
+  return {
+    async load() {
+      const res = await fetch(await link('GET'), { cache: 'no-store' });
+      if (res.status === 404) {
+        const slugs = await local.load();
+        if (slugs.length) await this.save(slugs);
+        return slugs;
+      }
+      if (!res.ok) throw new Error(`Could not read your favourites (${res.status})`);
+      return readFavourites(await res.json());
+    },
+    async save(slugs) {
+      const res = await fetch(await link('PUT'), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: favouritesDocument(slugs) });
+      if (!res.ok) throw new Error(`Could not save your favourites (${res.status})`);
+    },
+  };
+}
+
+// `token` is null for a reader who is not signed in.
+function favouritesStore(settings, name, token = null) {
+  const local = localFavourites(name);
+  if (!settings.favourites || !token) return local;
+  return remoteFavourites(new URL(settings.favourites, location.href), name, token, local);
+}
+
+// ---- signing in
+// A site with `login` in recipe-host.yml signs readers in with OpenID
+// Connect: the code flow with PKCE, through oidc-client-ts, coming back to
+// this same page (with its `?repo=`). Tokens are kept for the tab only and
+// renewed with the refresh token. The addresses may be relative, which the
+// local mock uses. Only `?repo=` survives the trip.
+function signInManager(settings) {
+  if (!settings.login) return null;
+  // This page without what the sign-in adds on its way back.
+  const here = `${location.origin}${location.pathname}${repo === asked ? `?repo=${repo}` : ''}`;
+  return new oidc.UserManager({
+    authority: new URL(settings.login.issuer, location.href).href,
+    client_id: settings.login.client,
+    redirect_uri: here,
+    post_logout_redirect_uri: here,
+    scope: 'openid profile',
+    userStore: new oidc.WebStorageStateStore({ store: sessionStorage }),
+    automaticSilentRenew: true,
+  });
+}
+
+const auth = signInManager(config);
+
+// The signed-in reader, or null: finishes a sign-in that has just come back
+// to this page, or renews one the tab already had.
+async function signedIn() {
+  const params = new URLSearchParams(location.search);
+  if (params.has('state') && (params.has('code') || params.has('error'))) {
+    let user = null;
+    try {
+      user = await auth.signinCallback();
+    } finally {
+      // Off the address bar, so a reload does not replay it.
+      history.replaceState(null, '', auth.settings.redirect_uri + (user?.state?.hash ?? ''));
+    }
+    return user;
+  }
+  const user = await auth.getUser();
+  if (user && !user.expired) return user;
+  return user?.refresh_token ? auth.signinSilent().catch(() => null) : null;
+}
+
+async function accessToken() {
+  let user = await auth.getUser();
+  if (!user || user.expired) user = await auth.signinSilent();
+  return user.access_token;
 }
 
 // Links in recipe Markdown point at repository files; on the site they
@@ -132,8 +219,25 @@ document.addEventListener('alpine:init', () => {
     filters: [],
     favourites: [],
     store: favouritesStore(config, repo),
+    signsIn: Boolean(auth),
+    account: null,
+    signInNeeded: false,
+    signInError: null,
 
     async init() {
+      if (auth) {
+        const user = await signedIn().catch((err) => {
+          this.signInError = err.error === 'access_denied' ? 'Sign-in was cancelled.' : `Sign-in did not work: ${err.message}`;
+          return null;
+        });
+        if (user) {
+          this.account = { name: user.profile.name ?? user.profile.preferred_username ?? 'Signed in' };
+          this.store = favouritesStore(config, repo, accessToken);
+        } else if (config.login.required) {
+          this.signInNeeded = true;
+          return;
+        }
+      }
       try {
         this.base = await dataBase();
         this.index = await this.fetchJson('index.json');
@@ -145,8 +249,22 @@ document.addEventListener('alpine:init', () => {
       window.addEventListener('hashchange', () => this.show());
       this.show();
       this.watchForUpdates();
-      // An unreadable store leaves no favourites shown rather than failing the page.
+      await this.loadFavourites();
+      // Back on the tab: pick up what another tab or device saved meanwhile.
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && this.loadFavourites());
+    },
+
+    // An unreadable store leaves the favourites shown rather than failing the page.
+    async loadFavourites() {
       this.favourites = await this.store.load().catch(() => this.favourites);
+    },
+
+    signIn() {
+      void auth.signinRedirect({ state: { hash: location.hash } });
+    },
+
+    signOut() {
+      void auth.signoutRedirect();
     },
 
     // ---- newer publishes

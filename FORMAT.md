@@ -19,6 +19,12 @@ description: Family recipes, each with a printable A5 card.
 repo: schryer/recipes           # owner/name on GitHub
 url: https://schryer.eu/recipes/ # where the site is served; printed on cards
 categories: [mains, sauces, sides, desserts, baking, drinks]  # front page order
+# Optional, both: sign readers in, and keep their favourites in their own storage.
+login:
+  issuer: https://auth.sustenaut.eu/realms/sustenaut  # an OpenID Connect issuer (https)
+  client: recipes                                    # this site's public client there
+  required: true                                     # default false: sign-in only for favourites
+favourites: https://presign.sustenaut.eu/            # needs login (*checked*)
 ```
 
 ## Recipes
