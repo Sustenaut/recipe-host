@@ -1,9 +1,4 @@
 {
-  "changes": [
-    {
-      "category": "changed",
-      "change": "A ?repo= page for a repository with nothing published says it has not been set up to host recipes, and links to the setup instructions."
-    }
-  ],
+  "changes": [],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."
 }

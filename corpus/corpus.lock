@@ -3,8 +3,8 @@
   "corpus": {
     "domain": "pub:sha2-256:zl5qctwgfxjcjkpng6fez64e6bt3ptdfimypu7bpcntsl2m2y5sa",
     "generation": {
-      "cid": "pub:sha2-256:ahbfsfvqldhye4rhbmbybt5desaxsx3vwhvoxa35sctxatn6g5tq",
-      "index": 2
+      "cid": "pub:sha2-256:2jkql6wsbc5cxh3y6hedggjsewctyguulrhazmrukq7urnhcaneq",
+      "index": 3
     },
     "imports": {},
     "key": "pub:sha2-256:xytkvt7dua7tvt6vydqu22rlr53vttuxh77sholft4p7sx4qrqjq",
@@ -18,8 +18,8 @@
     ]
   },
   "publets": [
-    {"slug": "pkg.recipe-host", "kind": "doc", "tag": "PKG-RECHOS-10-2026", "source": "publets/pkg.recipe-host", "cid": "pub:sha2-256:mmpr6y2snqokfbg4sqmezkkeytkmlubhc3s462tpovx4vdpg2v3a", "genesis": "pub:sha2-256:rowptdasrjk6dqsruouyagksq6luam3ymzgawsp7t3hmfv32oxkq", "deps": ["pkg.recipe-host#identity", "pkg.recipe-host#release"]},
-    {"slug": "pkg.recipe-host#identity", "kind": "claim", "source": "publets/pkg.recipe-host", "cid": "pub:sha2-256:t5nrxhhsr4x3owwwgufvwdp7uikd6f3w2wrpddewudx3nlmikytq", "genesis": "pub:sha2-256:v4wjoxb5wqjdgpqmtxekvanorlub24kkdxzp3epq4ufybbn57tdq", "deps": []},
-    {"slug": "pkg.recipe-host#release", "kind": "claim", "source": "publets/pkg.recipe-host", "cid": "pub:sha2-256:d4zgmoan4lz3prmx72iunqliftxzumd5eayyefcjhaw3qwvnqada", "genesis": "pub:sha2-256:d43k5w7salsnl6p572vf7rnik3x26avz67dey3twthvsb2n7vqea", "deps": ["pkg.recipe-host#identity"]}
+    {"slug": "pkg.recipe-host", "kind": "doc", "tag": "PKG-RECHOS-10-2026", "source": "publets/pkg.recipe-host", "cid": "pub:sha2-256:3p67uzwqnqlh3vda26vupqmzwi5d2mny5xbdumr2obwkwn4jvlnq", "genesis": "pub:sha2-256:rowptdasrjk6dqsruouyagksq6luam3ymzgawsp7t3hmfv32oxkq", "deps": ["pkg.recipe-host#identity", "pkg.recipe-host#release"]},
+    {"slug": "pkg.recipe-host#identity", "kind": "claim", "source": "publets/pkg.recipe-host", "cid": "pub:sha2-256:wagtax5prm6pszwefawmxemfu5nkjp6wixi5eic6ueasj5wfyaiq", "genesis": "pub:sha2-256:v4wjoxb5wqjdgpqmtxekvanorlub24kkdxzp3epq4ufybbn57tdq", "deps": []},
+    {"slug": "pkg.recipe-host#release", "kind": "claim", "source": "publets/pkg.recipe-host", "cid": "pub:sha2-256:y27ssihi5negopofdfdypiqpm7zj425oixfa2k6g3hh4ovyfq7za", "genesis": "pub:sha2-256:d43k5w7salsnl6p572vf7rnik3x26avz67dey3twthvsb2n7vqea", "deps": ["pkg.recipe-host#identity"]}
   ]
 }
