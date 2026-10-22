@@ -2,7 +2,7 @@
   "claims": {
     "identity": {
       "class": "archival",
-      "content": "recipe-host 0.1.3 is released as v0.1.3 from commit affd60308a3e0ba6cc803672e05178189ffc9f7f.",
+      "content": "recipe-host 0.1.4 is released as v0.1.4 from commit 8b189cbf959f69c471078e924ba65d7a2ae63de9.",
       "data": {
         "columns": [
           {
@@ -27,25 +27,25 @@
         "rows": [
           [
             "recipe-host",
-            "0.1.3",
+            "0.1.4",
             "",
             "",
-            "v0.1.3",
-            "affd60308a3e0ba6cc803672e05178189ffc9f7f"
+            "v0.1.4",
+            "8b189cbf959f69c471078e924ba65d7a2ae63de9"
           ]
         ]
       },
-      "scope": "the published release v0.1.3 of recipe-host",
+      "scope": "the published release v0.1.4 of recipe-host",
       "sources": [
         {
           "ref": "recipe-host",
-          "revision": "affd60308a3e0ba6cc803672e05178189ffc9f7f"
+          "revision": "8b189cbf959f69c471078e924ba65d7a2ae63de9"
         }
       ]
     },
     "release": {
       "class": "archival",
-      "content": "recipe-host 0.1.3 was released on 2026-10-22 from commit affd60308a3e0ba6cc803672e05178189ffc9f7f with these changes.",
+      "content": "recipe-host 0.1.4 was released on 2026-10-22 from commit 8b189cbf959f69c471078e924ba65d7a2ae63de9 with these changes.",
       "data": {
         "columns": [
           {
@@ -57,55 +57,27 @@
         ],
         "rows": [
           [
-            "internal",
-            "npm test writes an LCOV coverage report, which CI gives SonarQube Cloud for its coverage gate."
+            "security",
+            "The page names the Subresource Integrity hash of every script and stylesheet it loads (the libraries from INTEGRITY in lib/page.js, the app's own from this release's app/), so a browser refuses a file jsDelivr or anything between serves changed"
           ],
           [
             "added",
-            "A home page of the reader's favourite recipes, starred on the recipe list or a recipe's page and kept in the browser for each recipe repository."
+            "The action can deploy index.html to Cloudflare Pages as well as, or instead of, your own server: set cloudflare-api-token, cloudflare-account-id and cloudflare-project"
           ],
           [
-            "added",
-            "The recipe list moves from #/ to #/recipes and works like the ingredient list, with filter chips for each category and for breakfast, lunch and dinner tags; #/ is now the favourites page."
-          ],
-          [
-            "added",
-            "A logo and browser-tab icon: the Sustenaut disc with a steaming pot in place of the sprout."
-          ],
-          [
-            "fixed",
-            "Header links not selected are muted brown instead of Pure CSS grey, and a visited selected link is no longer black on the dark header."
-          ],
-          [
-            "internal",
-            "The browser tests record which lines of app/app.js they run, and CI runs them in the test job so SonarQube Cloud counts that coverage; test/ is analysed as test code."
-          ],
-          [
-            "added",
-            "Sign-in for readers: a login section in recipe-host.yml (an OpenID Connect issuer and client, and whether reading needs it) signs readers in with the code flow and PKCE, coming back to the same view and ?repo=. Sites without it are unchanged."
-          ],
-          [
-            "added",
-            "Favourites in the signed-in reader's own bucket: favourites in recipe-host.yml names a service that hands out short-lived links to one file per repository, so they follow the reader between browsers. What the browser kept moves there at the first sign-in."
-          ],
-          [
-            "added",
-            "recipe-host serve --mock-login previews a site with a local stand-in for the Sustenaut sign-in and favourites service, with test accounts and an in-memory bucket."
-          ],
-          [
-            "fixed",
-            "The logo's pot has no lid line, so the mark reads as a pot and steam without clutter."
+            "security",
+            "The deployed page names the hash of the published index.json, which lists the hash of every recipe file, and the page fetches them with integrity, so changed recipe data is refused; a newer publish is taken only from a newer page on the page's own host (recipe-host page --index)"
           ]
         ]
       },
       "depends": [
         "#identity"
       ],
-      "scope": "the published release v0.1.3 of recipe-host",
+      "scope": "the published release v0.1.4 of recipe-host",
       "sources": [
         {
           "ref": "recipe-host",
-          "revision": "affd60308a3e0ba6cc803672e05178189ffc9f7f"
+          "revision": "8b189cbf959f69c471078e924ba65d7a2ae63de9"
         }
       ]
     }

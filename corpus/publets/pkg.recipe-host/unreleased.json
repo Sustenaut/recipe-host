@@ -1,17 +1,4 @@
 {
-  "changes": [
-    {
-      "category": "security",
-      "change": "The page names the Subresource Integrity hash of every script and stylesheet it loads (the libraries from INTEGRITY in lib/page.js, the app's own from this release's app/), so a browser refuses a file jsDelivr or anything between serves changed"
-    },
-    {
-      "category": "added",
-      "change": "The action can deploy index.html to Cloudflare Pages as well as, or instead of, your own server: set cloudflare-api-token, cloudflare-account-id and cloudflare-project"
-    },
-    {
-      "category": "security",
-      "change": "The deployed page names the hash of the published index.json, which lists the hash of every recipe file, and the page fetches them with integrity, so changed recipe data is refused; a newer publish is taken only from a newer page on the page's own host (recipe-host page --index)"
-    }
-  ],
+  "changes": [],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."
 }
