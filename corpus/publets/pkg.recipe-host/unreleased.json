@@ -35,6 +35,10 @@
     {
       "category": "added",
       "change": "recipe-host serve --mock-login previews a site with a local stand-in for the Sustenaut sign-in and favourites service, with test accounts and an in-memory bucket."
+    },
+    {
+      "category": "fixed",
+      "change": "The logo's pot has no lid line, so the mark reads as a pot and steam without clutter."
     }
   ],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."
