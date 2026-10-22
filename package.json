@@ -1,6 +1,6 @@
 {
   "name": "recipe-host",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Host recipes from a GitHub repository: a static site served through jsDelivr, with a master ingredient list and changes made as pull requests.",
   "directories": {
     "lib": "lib",

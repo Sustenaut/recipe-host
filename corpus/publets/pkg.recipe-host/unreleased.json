@@ -1,45 +1,4 @@
 {
-  "changes": [
-    {
-      "category": "internal",
-      "change": "npm test writes an LCOV coverage report, which CI gives SonarQube Cloud for its coverage gate."
-    },
-    {
-      "category": "added",
-      "change": "A home page of the reader's favourite recipes, starred on the recipe list or a recipe's page and kept in the browser for each recipe repository."
-    },
-    {
-      "category": "added",
-      "change": "The recipe list moves from #/ to #/recipes and works like the ingredient list, with filter chips for each category and for breakfast, lunch and dinner tags; #/ is now the favourites page."
-    },
-    {
-      "category": "added",
-      "change": "A logo and browser-tab icon: the Sustenaut disc with a steaming pot in place of the sprout."
-    },
-    {
-      "category": "fixed",
-      "change": "Header links not selected are muted brown instead of Pure CSS grey, and a visited selected link is no longer black on the dark header."
-    },
-    {
-      "category": "internal",
-      "change": "The browser tests record which lines of app/app.js they run, and CI runs them in the test job so SonarQube Cloud counts that coverage; test/ is analysed as test code."
-    },
-    {
-      "category": "added",
-      "change": "Sign-in for readers: a login section in recipe-host.yml (an OpenID Connect issuer and client, and whether reading needs it) signs readers in with the code flow and PKCE, coming back to the same view and ?repo=. Sites without it are unchanged."
-    },
-    {
-      "category": "added",
-      "change": "Favourites in the signed-in reader's own bucket: favourites in recipe-host.yml names a service that hands out short-lived links to one file per repository, so they follow the reader between browsers. What the browser kept moves there at the first sign-in."
-    },
-    {
-      "category": "added",
-      "change": "recipe-host serve --mock-login previews a site with a local stand-in for the Sustenaut sign-in and favourites service, with test accounts and an in-memory bucket."
-    },
-    {
-      "category": "fixed",
-      "change": "The logo's pot has no lid line, so the mark reads as a pot and steam without clutter."
-    }
-  ],
+  "changes": [],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."
 }
