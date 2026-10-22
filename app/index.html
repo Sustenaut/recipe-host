@@ -2,7 +2,7 @@
 <!--
   The recipe site. `recipe-host build` fills in the {{…}} placeholders
   (lib/page.js) and writes this page into the site; everything it loads
-  comes from jsDelivr at pinned versions. The views are Alpine.js markup
+  comes from jsDelivr at pinned versions, each with its integrity hash. The views are Alpine.js markup
   over the state in app.js:
 
     #/                  the reader's favourite recipes, by category
@@ -22,16 +22,16 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 {{preload}}
-<link rel="stylesheet" href="{{nunito}}">
-<link rel="stylesheet" href="{{nunitoSans}}">
-<link rel="stylesheet" href="{{pure}}">
-<link rel="stylesheet" href="{{engine}}style.css">
+<link rel="stylesheet" href="{{nunito}}" integrity="{{nunitoSri}}" crossorigin="anonymous">
+<link rel="stylesheet" href="{{nunitoSans}}" integrity="{{nunitoSansSri}}" crossorigin="anonymous">
+<link rel="stylesheet" href="{{pure}}" integrity="{{pureSri}}" crossorigin="anonymous">
+<link rel="stylesheet" href="{{engine}}style.css" integrity="{{styleSri}}" crossorigin="anonymous">
 <script>window.RECIPE_HOST = {{config}};</script>
-<script defer src="{{marked}}"></script>
+<script defer src="{{marked}}" integrity="{{markedSri}}" crossorigin="anonymous"></script>
 {{oidc}}
-<script defer src="{{engine}}app.js"></script>
-<script defer src="{{anchor}}"></script>
-<script defer src="{{alpine}}"></script>
+<script defer src="{{engine}}app.js" integrity="{{appSri}}" crossorigin="anonymous"></script>
+<script defer src="{{anchor}}" integrity="{{anchorSri}}" crossorigin="anonymous"></script>
+<script defer src="{{alpine}}" integrity="{{alpineSri}}" crossorigin="anonymous"></script>
 </head>
 <body x-data="site">
 <header class="site-header">

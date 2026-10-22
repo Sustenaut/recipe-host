@@ -22,6 +22,18 @@ inputs:
   deploy-target:
     description: 'publish only, with deploy-key: the rsync destination, like deploy@example.org:./'
     default: ''
+  cloudflare-api-token:
+    description: >
+      publish only: a Cloudflare API token allowed to edit Cloudflare Pages,
+      to deploy index.html there as well. Leave empty when the site is not
+      on Cloudflare Pages.
+    default: ''
+  cloudflare-account-id:
+    description: 'publish only, with cloudflare-api-token: the Cloudflare account the Pages project is in.'
+    default: ''
+  cloudflare-project:
+    description: 'publish only, with cloudflare-api-token: the Pages project, which must already exist.'
+    default: ''
   github-token:
     description: Token for pushing the `site` branch and opening pull requests.
     default: ${{ github.token }}
@@ -108,14 +120,28 @@ runs:
           curl -sS -o /dev/null -w "%{http_code} $file\n" "https://purge.jsdelivr.net/gh/${REPO}@site/${file}" || true
         done
 
-    - name: Deploy index.html
+    # The deployed page names the commit just published, so it loads
+    # without asking GitHub for the newest one and every URL it reads stays
+    # cacheable for good, and the hash of its index.json, so a browser
+    # refuses any data that is not what was published. The server and
+    # Cloudflare Pages get the same file.
+    - name: Build the deployed page
+      if: inputs.command == 'publish' && (inputs.deploy-key != '' || inputs.cloudflare-api-token != '')
+      shell: bash
+      env:
+        DATA: https://cdn.jsdelivr.net/gh/${{ github.repository }}@${{ steps.site.outputs.sha }}/
+        ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/
+      run: |
+        mkdir -p "$RUNNER_TEMP/web"
+        node "$GITHUB_ACTION_PATH/bin/recipe-host.js" page --out "$RUNNER_TEMP/web/index.html" --engine "$ENGINE" --data "$DATA" \
+          --index "$RUNNER_TEMP/site/index.json"
+
+    - name: Deploy index.html to the server
       if: inputs.command == 'publish' && inputs.deploy-key != ''
       shell: bash
       env:
         DEPLOY_KEY: ${{ inputs.deploy-key }}
         TARGET: ${{ inputs.deploy-target }}
-        DATA: https://cdn.jsdelivr.net/gh/${{ github.repository }}@${{ steps.site.outputs.sha }}/
-        ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/
       run: |
         host="${TARGET#*@}"; host="${host%%:*}"
         install -m 700 -d ~/.ssh
@@ -123,12 +149,21 @@ runs:
         chmod 600 ~/.ssh/recipe_host_deploy
         ssh-keyscan -t ed25519 "$host" >> ~/.ssh/known_hosts
         # Only index.html is served from there; --delete clears anything
-        # an earlier site left behind. This copy names the commit just
-        # published, so it loads without asking GitHub for the newest one
-        # and every URL it reads stays cacheable for good.
-        mkdir -p "$RUNNER_TEMP/web"
-        node "$GITHUB_ACTION_PATH/bin/recipe-host.js" page --out "$RUNNER_TEMP/web/index.html" --engine "$ENGINE" --data "$DATA"
+        # an earlier site left behind.
         rsync -rlvz --checksum --delete -e "ssh -i ~/.ssh/recipe_host_deploy" "$RUNNER_TEMP/web/" "$TARGET"
+
+    - name: Deploy index.html to Cloudflare Pages
+      if: inputs.command == 'publish' && inputs.cloudflare-api-token != ''
+      shell: bash
+      env:
+        # The names wrangler reads; the values are the recipe repository's own.
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+        PROJECT: ${{ inputs.cloudflare-project }}
+        SOURCE: ${{ github.sha }}
+      run: |
+        npx --yes wrangler@4.147.0 pages deploy "$RUNNER_TEMP/web" \
+          --project-name "$PROJECT" --branch main --commit-hash "$SOURCE"
 
     - name: Apply the request
       id: request

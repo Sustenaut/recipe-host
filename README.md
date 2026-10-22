@@ -43,8 +43,8 @@ recipe repository (main)            recipe repository (site branch)
                                                 │
                                          jsDelivr CDN
                                                 │
-your web server: index.html ──▶ app (this repo, at a pinned tag, via jsDelivr)
-                                 + data (the site branch, via jsDelivr)
+web server / Pages: index.html ──▶ app (this repo, at a pinned tag, via jsDelivr)
+                                   + data (the site branch, via jsDelivr)
 ```
 
 - **`app/`** is the site, with no build step: `index.html` is an
@@ -52,13 +52,17 @@ your web server: index.html ──▶ app (this repo, at a pinned tag, via jsDel
   [Pure CSS](https://pure-css.github.io), and `app.js` holds its state.
   `recipe-host build` fills in the repository's settings and writes the page
   as the site's `index.html`; everything it loads comes from jsDelivr at
-  pinned versions.
+  pinned versions, each script and stylesheet with its
+  [Subresource Integrity](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity)
+  hash, so a browser refuses any file that is not the one released. The
+  deployed page also names the hash of the published `index.json`, which
+  holds the hash of every recipe file, so the recipes are checked too.
 - **`lib/`** and **`bin/recipe-host.js`** are the command line: `check`,
   `build`, `link`, `request` and `serve`.
 - **`cards/recipe-card.typ`** is the A5 card, set with [Typst](https://typst.app).
 - **`action.yml`** runs all of it in GitHub Actions.
 
-The page deployed to your server names the exact `site` commit it was
+The page deployed to your server and to Pages names the exact `site` commit it was
 published with and loads everything from jsDelivr at that commit and at
 pinned library versions. None of those URLs ever change, so browsers and
 the CDN cache them for good; publishing warms jsDelivr with the new commit
@@ -104,6 +108,11 @@ repository's `site` branch instead, and its buttons open requests there.
              # Optional: copy index.html to your own web server.
              deploy-key: ${{ secrets.RECIPES_DEPLOY_KEY }}
              deploy-target: deploy@example.org:./
+             # Optional: deploy it to Cloudflare Pages too, with your own
+             # token (Cloudflare Pages: Edit only) and account.
+             cloudflare-api-token: ${{ secrets.CLOUDFLARE_GITHUB_API_TOKEN }}
+             cloudflare-account-id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+             cloudflare-project: recipes
    ```
 
    `.github/workflows/requests.yml` turns requests from the site into pull requests:
@@ -135,7 +144,11 @@ repository's `site` branch instead, and its buttons open requests there.
    requests**.
 4. Serve the built `index.html`. It is on the `site` branch, and with
    `deploy-key` set the publish step copies it to your server. It is the
-   only file your server needs.
+   only file your server needs. With `cloudflare-api-token` set the publish
+   step also deploys it to a [Cloudflare Pages](https://pages.cloudflare.com)
+   project, which must exist already; the token needs *Cloudflare Pages:
+   Edit* on that account. Both hosts get the same page, so either can serve
+   the site while the other is down.
 
 Pull requests opened by the request workflow use the workflow's own token,
 and GitHub does not run other workflows for those, so the request workflow
