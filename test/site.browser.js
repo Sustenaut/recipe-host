@@ -263,12 +263,16 @@ test('?repo= shows another repository and sends its requests there', async () =>
   await page.unrouteAll();
 });
 
-test('?repo= naming a repository with nothing published says so', async () => {
+test('?repo= naming a repository with nothing published says how to set it up', async () => {
   const before = errors.length;
   await page.route('https://api.github.com/**', (route) => route.fulfill({ status: 404, body: '' }));
   await page.route('https://cdn.jsdelivr.net/gh/**', (route) => route.fulfill({ status: 404, body: '' }));
-  await visit('?repo=nobody/nothing#/', 'article:has-text("Something went wrong")');
-  assert.match(await page.textContent('article'), /Found no published recipes in nobody\/nothing\./);
+  await visit('?repo=nobody/nothing#/', 'article:has-text("No recipes here yet")');
+  const article = page.locator('article:has-text("No recipes here yet")');
+  assert.match(await article.textContent(), /This repository \(nobody\/nothing\) has not yet been set up to host recipes\./);
+  assert.equal(await article.locator('a', { hasText: 'nobody/nothing' }).getAttribute('href'), 'https://github.com/nobody/nothing');
+  assert.equal(await article.locator('a', { hasText: 'these instructions' }).getAttribute('href'), 'https://github.com/schryer/recipe-host#set-up-a-recipe-repository');
+  assert.equal(await page.isVisible('article:has-text("Something went wrong")'), false);
   await page.unrouteAll();
   errors.splice(before); // the browser logs the 404s themselves
 });

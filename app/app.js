@@ -226,6 +226,8 @@ document.addEventListener('alpine:init', () => {
     // with a hash here is refused unless it matches.
     integrity: {},
     error: null,
+    // Set when `?repo=` names a repository with nothing published: why.
+    notSetUp: null,
     route: { view: 'home', arg: null },
     recipe: null,
     notFound: false,
@@ -261,8 +263,8 @@ document.addEventListener('alpine:init', () => {
         if (config.dataIntegrity && this.base === new URL(config.data, location.href).href) this.integrity = { 'index.json': config.dataIntegrity };
         await this.loadIndex();
       } catch (err) {
-        this.error = repo === config.repo ? err.message
-          : `Found no published recipes in ${repo}. It needs to be a public GitHub repository whose recipe-host workflow has run (${err.message}).`;
+        if (repo === config.repo) this.error = err.message;
+        else this.notSetUp = err.message;
         return;
       }
       window.addEventListener('hashchange', () => this.show());
