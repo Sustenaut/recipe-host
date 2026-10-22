@@ -430,6 +430,8 @@ function deployChecked(sha, dataIntegrity) {
 test('a page that names its data\'s hash refuses data that is not what was published', async () => {
   const sha = 'c'.repeat(40);
   const integrity = await publishExactly(sha, 'Checked recipes', { 'recipes/herb-salad.json': (body) => body.replace('Herb salad', 'Weed salad') });
+  // The page checks for a newer publish on opening; there is none.
+  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => route.fulfill({ body: sha }));
   deployChecked(sha, integrity);
   await page.goto('about:blank');
   await page.goto(`${base}checked.html#/recipe/salsa-verde`);
