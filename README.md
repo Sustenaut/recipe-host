@@ -108,8 +108,9 @@ repository's `site` branch instead, and its buttons open requests there.
              # Optional: copy index.html to your own web server.
              deploy-key: ${{ secrets.RECIPES_DEPLOY_KEY }}
              deploy-target: deploy@example.org:./
-             # Optional: deploy it to Cloudflare Pages too.
-             cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+             # Optional: deploy it to Cloudflare Pages too, with your own
+             # token (Cloudflare Pages: Edit only) and account.
+             cloudflare-api-token: ${{ secrets.CLOUDFLARE_GITHUB_API_TOKEN }}
              cloudflare-account-id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
              cloudflare-project: recipes
    ```

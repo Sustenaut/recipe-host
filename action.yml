@@ -156,6 +156,7 @@ runs:
       if: inputs.command == 'publish' && inputs.cloudflare-api-token != ''
       shell: bash
       env:
+        # The names wrangler reads; the values are the recipe repository's own.
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
         CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
         PROJECT: ${{ inputs.cloudflare-project }}
