@@ -367,6 +367,8 @@ test('a site with login asks readers to sign in and keeps their favourites in th
     assert.ok(errors.slice(logged).every((e) => e.includes('404')));
     errors.splice(logged);
   } finally {
+    // Leave the page first, so nothing it still loads meets a closed server.
+    await page.goto('about:blank');
     loginServer.close();
   }
 });
@@ -422,6 +424,12 @@ async function publishExactly(sha, title, tamper = {}) {
   return sri(json);
 }
 
+// The browser reports each file it refuses, and each request a test cut
+// off; those are what the integrity tests expect.
+function forgetRefusals() {
+  errors.splice(0, errors.length, ...errors.filter((e) => !/integrity|valid digest|net::ERR_FAILED/.test(e)));
+}
+
 function deployChecked(sha, dataIntegrity) {
   const html = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${sha}/`, dataIntegrity });
   fs.writeFileSync(path.join(out, 'checked.html'), html);
@@ -448,8 +456,7 @@ test('a page that names its data\'s hash refuses data that is not what was publi
   await page.waitForSelector('text=Something went wrong');
   assert.equal(await page.isVisible('.row'), false);
   await page.unrouteAll();
-  // The browser reports each refused file; those are what this test expects.
-  errors.splice(0, errors.length, ...errors.filter((e) => !/integrity|digest|Failed to fetch|Could not load/i.test(e)));
+  forgetRefusals();
 });
 
 test('a page that names its data\'s hash reloads only into data its host names', async () => {
@@ -473,13 +480,26 @@ test('a page that names its data\'s hash reloads only into data its host names',
   await page.waitForTimeout(200);
   assert.equal(await page.textContent('.pure-menu-heading span'), 'Old checked recipes');
   assert.equal(await page.isVisible('.bell.active'), true);
+  // Nor while the host can't be reached.
+  await page.route(`${base}checked.html`, (route) => route.abort());
+  await page.click('.reload');
+  await page.waitForTimeout(200);
+  assert.equal(await page.textContent('.pure-menu-heading span'), 'Old checked recipes');
+  await page.unroute(`${base}checked.html`);
+  // A newer page whose hash the data does not match: the data is refused
+  // and the page keeps what it shows.
+  deployChecked(newer, sri('something else'));
+  await page.click('.reload');
+  await page.waitForTimeout(200);
+  assert.equal(await page.textContent('.pure-menu-heading span'), 'Old checked recipes');
+  assert.equal(await page.isVisible('.bell.active'), true);
   // Once the newer page is deployed, the reload takes its data and hash.
   deployChecked(newer, newIntegrity);
   await page.click('.reload');
   await eventually(() => page.textContent('.pure-menu-heading span'), 'New checked recipes');
   await eventually(() => page.isVisible('.bell.active'), false);
   await page.waitForSelector('.steps li');
-  await page.unrouteAll();
+  await page.unrouteAll();  forgetRefusals();
 });
 
 test('a page that reads the newest commit has no bell', async () => {
