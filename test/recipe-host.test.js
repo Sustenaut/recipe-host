@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -237,6 +238,17 @@ test('a page given its data\'s hash names it, on the preload too', () => {
   assert.ok(html.includes(`index.json" as="fetch" crossorigin integrity="${hash}">`));
   assert.ok(html.includes(`"dataIntegrity":"${hash}"`));
   assert.match(pageHtml(config), /"dataIntegrity":null/);
+});
+
+test('recipe-host page --index names the hash of that index.json in the page', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-page-'));
+  fs.writeFileSync(path.join(dir, 'index.json'), '{"recipes":[]}');
+  const bin = new URL('../bin/recipe-host.js', import.meta.url).pathname;
+  const root = new URL('./fixtures/repo', import.meta.url).pathname;
+  execFileSync(process.execPath, [bin, 'page', '--root', root, '--out', path.join(dir, 'index.html'), '--data', 'https://cdn.example/d/', '--index', path.join(dir, 'index.json')]);
+  const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+  assert.ok(html.includes(`"dataIntegrity":"${sri('{"recipes":[]}')}"`));
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('the built index holds the integrity of every recipe file, and those files match it', () => {
