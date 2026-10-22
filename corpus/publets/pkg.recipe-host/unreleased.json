@@ -1,4 +1,9 @@
 {
-  "changes": [],
+  "changes": [
+    {
+      "category": "security",
+      "change": "The page names the Subresource Integrity hash of every script and stylesheet it loads (the libraries from INTEGRITY in lib/page.js, the app's own from this release's app/), so a browser refuses a file jsDelivr or anything between serves changed"
+    }
+  ],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."
 }

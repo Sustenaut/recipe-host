@@ -380,7 +380,8 @@ test('a pinned page lights the bell when a newer publish is out, and reloads int
   // Registered last, so it answers first: GitHub reports the pinned commit
   // until `latest` changes.
   let latest = old;
-  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => route.fulfill({ body: latest }));
+  let asked = 0;
+  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => { asked += 1; return route.fulfill({ body: latest }); });
   await page.clock.install();
   await page.goto('about:blank');
   await page.goto(`${base}pinned.html#/recipe/salsa-verde`);
@@ -388,6 +389,9 @@ test('a pinned page lights the bell when a newer publish is out, and reloads int
   await page.locator('.bell').waitFor();
   assert.equal(await page.isVisible('.bell.active'), false);
   assert.equal(await page.isVisible('.reload'), false);
+  // The bell shows before the check on opening has its answer: wait for
+  // that answer, so it is the pinned commit and not the newer one.
+  await eventually(() => asked > 0, true);
   latest = newer;
   await page.clock.runFor(30 * 60 * 1000);
   assert.equal(await page.isVisible('.bell.active'), false);
@@ -396,8 +400,8 @@ test('a pinned page lights the bell when a newer publish is out, and reloads int
   assert.equal(await page.textContent('.pure-menu-heading span'), 'Old recipes');
   await page.click('.reload');
   await eventually(() => page.textContent('.pure-menu-heading span'), 'New recipes');
-  assert.equal(await page.isVisible('.bell.active'), false);
-  assert.equal(await page.isVisible('.reload'), false);
+  await eventually(() => page.isVisible('.bell.active'), false);
+  await eventually(() => page.isVisible('.reload'), false);
   await page.waitForSelector('.steps li');
   await page.unrouteAll();
 });

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { cardData, typstPath } from '../lib/build.js';
-import { pageHtml } from '../lib/page.js';
+import { ASSETS, INTEGRITY, pageHtml, sri } from '../lib/page.js';
 import { linkRecipe } from '../lib/link.js';
 import { parseIngredientLine, parseRecipe, parseIngredient, plainText, slugify, splitSections } from '../lib/parse.js';
 import { buildIndex, loadRepo } from '../lib/repo.js';
@@ -230,10 +230,30 @@ test('a page pinned to one data commit preloads its index and skips asking GitHu
   assert.match(latest, /"data":null/);
 });
 
+test('every library the page loads carries the integrity of the file its version ships', () => {
+  for (const [key, [name, version, file]] of Object.entries(ASSETS)) {
+    const installed = JSON.parse(fs.readFileSync(new URL(`../node_modules/${name}/package.json`, import.meta.url), 'utf8')).version;
+    assert.equal(installed, version, `ASSETS.${key} pins ${name}@${version} but package.json installs ${installed}`);
+    const hash = sri(fs.readFileSync(new URL(`../node_modules/${name}/${file}`, import.meta.url)));
+    assert.equal(INTEGRITY[key], hash, `INTEGRITY.${key} must be '${hash}', the hash of ${name}@${version}/${file}`);
+  }
+});
+
+test('every script and stylesheet on the page names its integrity, the app itself included', () => {
+  const page = pageHtml({ title: 'R', description: '', repo: 'o/r', branch: 'main', login: { issuer: 'https://auth.example/x', client: 'c' }, favourites: 'https://store.example/' });
+  const tags = page.match(/<(script|link rel="stylesheet")[^>]* (src|href)="[^"]+"[^>]*>/g);
+  assert.equal(tags.length, 9);
+  for (const tag of tags) assert.match(tag, / integrity="sha384-[A-Za-z0-9+/]+={0,2}" crossorigin="anonymous"/, tag);
+  const app = sri(fs.readFileSync(new URL('../app/app.js', import.meta.url)));
+  assert.ok(page.includes(`app.js" integrity="${app}"`));
+  const style = sri(fs.readFileSync(new URL('../app/style.css', import.meta.url)));
+  assert.ok(page.includes(`style.css" integrity="${style}"`));
+});
+
 test('a site with login loads the sign-in library and passes its settings to the page', () => {
   const config = { title: 'R', description: '', repo: 'o/r', branch: 'main', login: { issuer: 'https://auth.example/realms/x', client: 'recipes', required: true }, favourites: 'https://store.example/' };
   const page = pageHtml(config);
-  assert.match(page, /<script defer src="https:\/\/cdn.jsdelivr.net\/npm\/oidc-client-ts@3.5.0\/dist\/browser\/oidc-client-ts.min.js"><\/script>/);
+  assert.match(page, /<script defer src="https:\/\/cdn.jsdelivr.net\/npm\/oidc-client-ts@3.5.0\/dist\/browser\/oidc-client-ts.min.js" integrity="sha384-[^"]+" crossorigin="anonymous"><\/script>/);
   assert.match(page, /"login":\{"issuer":"https:\/\/auth.example\/realms\/x","client":"recipes","required":true\},"favourites":"https:\/\/store.example\/"/);
   const preview = pageHtml(config, { login: { issuer: '/mock/x', client: 'recipes', required: false }, favourites: '/mock/presign/' });
   assert.match(preview, /"issuer":"\/mock\/x"/);

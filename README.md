@@ -52,7 +52,9 @@ your web server: index.html ──▶ app (this repo, at a pinned tag, via jsDel
   [Pure CSS](https://pure-css.github.io), and `app.js` holds its state.
   `recipe-host build` fills in the repository's settings and writes the page
   as the site's `index.html`; everything it loads comes from jsDelivr at
-  pinned versions.
+  pinned versions, each script and stylesheet with its
+  [Subresource Integrity](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity)
+  hash, so a browser refuses any file that is not the one released.
 - **`lib/`** and **`bin/recipe-host.js`** are the command line: `check`,
   `build`, `link`, `request` and `serve`.
 - **`cards/recipe-card.typ`** is the A5 card, set with [Typst](https://typst.app).
