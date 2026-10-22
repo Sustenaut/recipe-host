@@ -10,7 +10,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium } from 'playwright';
 import { buildSite } from '../lib/build.js';
-import { pageHtml } from '../lib/page.js';
+import { pageHtml, sri } from '../lib/page.js';
 import { loadConfig } from '../lib/repo.js';
 import { LOCAL_PAGE, serve } from '../lib/serve.js';
 import { MOCK_ACCOUNTS, mockLogin, mockPageSettings } from '../lib/mock-login.js';
@@ -402,6 +402,80 @@ test('a pinned page lights the bell when a newer publish is out, and reloads int
   await eventually(() => page.textContent('.pure-menu-heading span'), 'New recipes');
   await eventually(() => page.isVisible('.bell.active'), false);
   await eventually(() => page.isVisible('.reload'), false);
+  await page.waitForSelector('.steps li');
+  await page.unrouteAll();
+});
+
+// A publish at `sha` served byte for byte, as jsDelivr would: its
+// index.json (titled `title`) and the built recipe files, whose hashes that
+// index lists. `tamper` changes the file at a path on the way. Returns the
+// hash of the index, as a deployed page names it.
+async function publishExactly(sha, title, tamper = {}) {
+  const index = JSON.parse(fs.readFileSync(path.join(out, 'index.json'), 'utf8'));
+  index.site.title = title;
+  const json = JSON.stringify(index);
+  await page.route(`https://cdn.jsdelivr.net/gh/example/recipes@${sha}/**`, (route) => {
+    const file = new URL(route.request().url()).pathname.split(`@${sha}/`)[1];
+    const body = file === 'index.json' ? json : fs.readFileSync(path.join(out, file), 'utf8');
+    return route.fulfill({ body: tamper[file] ? tamper[file](body) : body, headers: { 'access-control-allow-origin': '*' } });
+  });
+  return sri(json);
+}
+
+function deployChecked(sha, dataIntegrity) {
+  const html = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${sha}/`, dataIntegrity });
+  fs.writeFileSync(path.join(out, 'checked.html'), html);
+}
+
+test('a page that names its data\'s hash refuses data that is not what was published', async () => {
+  const sha = 'c'.repeat(40);
+  const integrity = await publishExactly(sha, 'Checked recipes', { 'recipes/herb-salad.json': (body) => body.replace('Herb salad', 'Weed salad') });
+  deployChecked(sha, integrity);
+  await page.goto('about:blank');
+  await page.goto(`${base}checked.html#/recipe/salsa-verde`);
+  await page.waitForSelector('.steps li');
+  assert.equal(await page.textContent('.pure-menu-heading span'), 'Checked recipes');
+  // A recipe file that was changed on the way is refused.
+  await page.goto(`${base}checked.html#/recipe/herb-salad`);
+  await page.waitForSelector('text=Something went wrong');
+  assert.equal(await page.isVisible('text=Weed salad'), false);
+  // So is an index that is not the one the page names.
+  deployChecked(sha, sri('something else'));
+  await page.goto('about:blank');
+  await page.goto(`${base}checked.html#/recipes`);
+  await page.waitForSelector('text=Something went wrong');
+  assert.equal(await page.isVisible('.row'), false);
+  await page.unrouteAll();
+  // The browser reports each refused file; those are what this test expects.
+  errors.splice(0, errors.length, ...errors.filter((e) => !/integrity|digest|Failed to fetch|Could not load/i.test(e)));
+});
+
+test('a page that names its data\'s hash reloads only into data its host names', async () => {
+  const [old, newer] = ['d'.repeat(40), 'e'.repeat(40)];
+  deployChecked(old, await publishExactly(old, 'Old checked recipes'));
+  const newIntegrity = await publishExactly(newer, 'New checked recipes');
+  let latest = old;
+  let asked = 0;
+  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => { asked += 1; return route.fulfill({ body: latest }); });
+  await page.clock.install();
+  await page.goto('about:blank');
+  await page.goto(`${base}checked.html#/recipe/salsa-verde`);
+  await page.waitForSelector('.steps li');
+  await eventually(() => asked > 0, true);
+  latest = newer;
+  await page.clock.runFor(60 * 60 * 1000);
+  await page.locator('.bell.active').waitFor();
+  // GitHub has the newer publish, but the host still serves the old page:
+  // nothing changes, and the bell stays lit.
+  await page.click('.reload');
+  await page.waitForTimeout(200);
+  assert.equal(await page.textContent('.pure-menu-heading span'), 'Old checked recipes');
+  assert.equal(await page.isVisible('.bell.active'), true);
+  // Once the newer page is deployed, the reload takes its data and hash.
+  deployChecked(newer, newIntegrity);
+  await page.click('.reload');
+  await eventually(() => page.textContent('.pure-menu-heading span'), 'New checked recipes');
+  await eventually(() => page.isVisible('.bell.active'), false);
   await page.waitForSelector('.steps li');
   await page.unrouteAll();
 });

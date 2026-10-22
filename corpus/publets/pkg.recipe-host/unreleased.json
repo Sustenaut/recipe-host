@@ -7,6 +7,10 @@
     {
       "category": "added",
       "change": "The action can deploy index.html to Cloudflare Pages as well as, or instead of, your own server: set cloudflare-api-token, cloudflare-account-id and cloudflare-project"
+    },
+    {
+      "category": "security",
+      "change": "The deployed page names the hash of the published index.json, which lists the hash of every recipe file, and the page fetches them with integrity, so changed recipe data is refused; a newer publish is taken only from a newer page on the page's own host (recipe-host page --index)"
     }
   ],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."

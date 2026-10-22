@@ -8,7 +8,7 @@ import { buildSite } from '../lib/build.js';
 import { linkRecipe } from '../lib/link.js';
 import { checkConfig, loadConfig, loadRepo } from '../lib/repo.js';
 import { mockLogin, mockPageSettings } from '../lib/mock-login.js';
-import { pageHtml } from '../lib/page.js';
+import { pageHtml, sri } from '../lib/page.js';
 import { applyRequest, readRequest, RequestError } from '../lib/requests.js';
 import { LOCAL_PAGE, serve } from '../lib/serve.js';
 
@@ -20,6 +20,7 @@ const USAGE = `Usage: recipe-host <command> [options]
   page --out FILE          write only index.html, for the web server
        [--engine URL]     as for build
        [--data URL]       read the data from here (e.g. one commit on jsDelivr) instead of asking GitHub
+       [--index FILE]     that data's index.json, whose hash the page then checks
   link FILE...             link a recipe's plain ingredient lines to the ingredient list
   request --issue FILE     apply the request in a GitHub issue (JSON from the API)
   serve [--port N]         build, then preview the site at http://localhost:N
@@ -81,6 +82,7 @@ switch (command) {
     const page = {};
     if (args.engine) page.engine = args.engine;
     if (args.data) page.data = args.data;
+    if (args.index) page.dataIntegrity = sri(fs.readFileSync(args.index));
     const config = loadConfig(root);
     const errors = checkConfig(config);
     report({ errors, warnings: [] });

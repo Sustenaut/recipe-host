@@ -179,6 +179,20 @@ async function dataBase() {
   return atCommit((await latestSite()) ?? 'site');
 }
 
+// The settings of a fresh copy of this page from its own host: a newer
+// publish deploys a page naming its data and that data's hash, and only
+// then does a page with checked data switch to it. Null until the host has
+// the newer page, or when it can't be reached.
+async function hostedSettings() {
+  try {
+    const res = await fetch(location.href.split('#')[0], { cache: 'no-cache' });
+    const json = res.ok && (await res.text()).match(/window\.RECIPE_HOST = (\{.*\});<\/script>/)?.[1];
+    return json ? JSON.parse(json) : null;
+  } catch {
+    return null;
+  }
+}
+
 const normalize = (s) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 // Opens a prefilled GitHub issue holding the request as JSON; see
@@ -207,6 +221,10 @@ document.addEventListener('alpine:init', () => {
     NAV,
     base: null,
     index: null,
+    // Subresource Integrity hashes of the data files, by path under `base`:
+    // index.json's from the page, every recipe's from index.json. A file
+    // with a hash here is refused unless it matches.
+    integrity: {},
     error: null,
     route: { view: 'home', arg: null },
     recipe: null,
@@ -240,7 +258,8 @@ document.addEventListener('alpine:init', () => {
       }
       try {
         this.base = await dataBase();
-        this.index = await this.fetchJson('index.json');
+        if (config.dataIntegrity && this.base === new URL(config.data, location.href).href) this.integrity = { 'index.json': config.dataIntegrity };
+        await this.loadIndex();
       } catch (err) {
         this.error = repo === config.repo ? err.message
           : `Found no published recipes in ${repo}. It needs to be a public GitHub repository whose recipe-host workflow has run (${err.message}).`;
@@ -298,20 +317,35 @@ document.addEventListener('alpine:init', () => {
     // ticked meanwhile is lost.
     async applyUpdate() {
       const base = atCommit(this.update);
+      const before = { base: this.base, index: this.index, integrity: this.integrity };
       try {
-        const res = await fetch(new URL('index.json', base));
-        if (!res.ok) throw new Error(`Could not load the new recipes (${res.status})`);
-        this.index = await res.json();
+        // Checked data is replaced only by data the host's newer page
+        // names the hash of; until that page is deployed, the bell stays lit.
+        if (this.integrity['index.json']) {
+          const fresh = await hostedSettings();
+          if (!fresh?.dataIntegrity || new URL(fresh.data, location.href).href !== base) return;
+          this.integrity = { 'index.json': fresh.dataIntegrity };
+        } else this.integrity = {};
         this.base = base;
+        await this.loadIndex();
         this.update = null;
         if (this.recipe) this.recipe = await this.fetchJson(`recipes/${this.recipe.slug}.json`);
       } catch {
         // Keep showing this commit; the bell stays lit to try again.
+        Object.assign(this, before);
       }
     },
 
+    async loadIndex() {
+      const index = await this.fetchJson('index.json');
+      this.integrity = { ...index.integrity, ...this.integrity };
+      this.index = index;
+    },
+
+    // A fetch whose integrity does not match rejects, like a network error.
     async fetchJson(path) {
-      const res = await fetch(this.dataUrl(path));
+      const integrity = this.integrity[path];
+      const res = await fetch(this.dataUrl(path), integrity ? { integrity } : {});
       if (!res.ok) throw new Error(`Could not load ${path} (${res.status})`);
       return res.json();
     },

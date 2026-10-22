@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { cardData, typstPath } from '../lib/build.js';
+import { buildSite, cardData, typstPath } from '../lib/build.js';
 import { ASSETS, INTEGRITY, pageHtml, sri } from '../lib/page.js';
 import { linkRecipe } from '../lib/link.js';
 import { parseIngredientLine, parseRecipe, parseIngredient, plainText, slugify, splitSections } from '../lib/parse.js';
@@ -228,6 +228,25 @@ test('a page pinned to one data commit preloads its index and skips asking GitHu
   const latest = pageHtml(config);
   assert.doesNotMatch(latest, /rel="preload"/);
   assert.match(latest, /"data":null/);
+});
+
+test('a page given its data\'s hash names it, on the preload too', () => {
+  const config = { title: 'R', description: '', repo: 'o/r', branch: 'main' };
+  const hash = sri('{}');
+  const html = pageHtml(config, { data: 'https://cdn.jsdelivr.net/gh/o/r@abc/', dataIntegrity: hash });
+  assert.ok(html.includes(`index.json" as="fetch" crossorigin integrity="${hash}">`));
+  assert.ok(html.includes(`"dataIntegrity":"${hash}"`));
+  assert.match(pageHtml(config), /"dataIntegrity":null/);
+});
+
+test('the built index holds the integrity of every recipe file, and those files match it', () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-build-'));
+  const repo = buildSite(new URL('./fixtures/repo', import.meta.url).pathname, out, { cards: false, log: () => {} });
+  assert.deepEqual(repo.errors, []);
+  const { integrity } = JSON.parse(fs.readFileSync(path.join(out, 'index.json'), 'utf8'));
+  assert.deepEqual(Object.keys(integrity).sort(), repo.recipes.map((r) => `recipes/${r.slug}.json`).sort());
+  for (const [file, hash] of Object.entries(integrity)) assert.equal(sri(fs.readFileSync(path.join(out, file))), hash, file);
+  fs.rmSync(out, { recursive: true, force: true });
 });
 
 test('every library the page loads carries the integrity of the file its version ships', () => {

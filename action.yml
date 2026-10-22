@@ -122,7 +122,9 @@ runs:
 
     # The deployed page names the commit just published, so it loads
     # without asking GitHub for the newest one and every URL it reads stays
-    # cacheable for good. The server and Cloudflare Pages get the same file.
+    # cacheable for good, and the hash of its index.json, so a browser
+    # refuses any data that is not what was published. The server and
+    # Cloudflare Pages get the same file.
     - name: Build the deployed page
       if: inputs.command == 'publish' && (inputs.deploy-key != '' || inputs.cloudflare-api-token != '')
       shell: bash
@@ -131,7 +133,8 @@ runs:
         ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/
       run: |
         mkdir -p "$RUNNER_TEMP/web"
-        node "$GITHUB_ACTION_PATH/bin/recipe-host.js" page --out "$RUNNER_TEMP/web/index.html" --engine "$ENGINE" --data "$DATA"
+        node "$GITHUB_ACTION_PATH/bin/recipe-host.js" page --out "$RUNNER_TEMP/web/index.html" --engine "$ENGINE" --data "$DATA" \
+          --index "$RUNNER_TEMP/site/index.json"
 
     - name: Deploy index.html to the server
       if: inputs.command == 'publish' && inputs.deploy-key != ''
