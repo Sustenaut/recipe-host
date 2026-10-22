@@ -341,6 +341,23 @@ test('a site with login asks readers to sign in and keeps their favourites in th
     mock.settings.accessSeconds = 300;
     await page.click('.account button');
 
+    // A published page that needs sign-in asks nothing of GitHub or the
+    // recipe data before it: only the page itself and its libraries load.
+    const pinned = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, ...mockPageSettings(), data: 'https://cdn.jsdelivr.net/gh/example/recipes@abc/' });
+    fs.writeFileSync(path.join(loginOut, 'pinned.html'), pinned);
+    const asked = [];
+    const record = (req) => asked.push(new URL(req.url()));
+    await page.goto('about:blank');
+    page.on('request', record);
+    await page.goto(`${site}pinned.html#/`);
+    await page.waitForSelector('.sign-in button');
+    await page.waitForTimeout(300);
+    page.off('request', record);
+    assert.deepEqual(asked.filter((u) => u.origin !== site.slice(0, -1)).map((u) => u.href), []);
+    assert.deepEqual(asked.filter((u) => !/^\/(pinned\.html|engine\/|vendor\/)/.test(u.pathname)).map((u) => u.href), []);
+    await page.goto(`${site}#/`);
+    await page.waitForSelector('.sign-in button');
+
     // Cancelling at the sign-in page says so.
     await page.waitForSelector('.sign-in button');
     await page.click('.sign-in button');
