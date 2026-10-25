@@ -1,3 +1,11 @@
 {
-  "kind": "utility"
+  "kind": "utility",
+  "ci": {
+    "with": {
+      "browser-test": "npm run test:browser",
+      "coverage-report": "coverage/",
+      "sonar-args": "-Dsonar.tests=test -Dsonar.exclusions=test/**"
+    },
+    "release": {"pubrel": "0.5.4"}
+  }
 }

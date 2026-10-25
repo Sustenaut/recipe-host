@@ -1,0 +1,62 @@
+# Written by `pubkit sync` from the ci block of pubkit.json. Do not edit:
+# change pubkit.json and run `pubkit sync`.
+name: pr
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ci
+    uses: schryer/pubkit/.github/workflows/job-node-test.yml@v0.12.6
+    with: {"coverage-report": "coverage/"}
+
+  browser:
+    name: ci
+    uses: schryer/pubkit/.github/workflows/job-node-browser.yml@v0.12.6
+    with: {"browser-test": "npm run test:browser"}
+
+  audit:
+    name: ci
+    uses: schryer/pubkit/.github/workflows/job-node-audit.yml@v0.12.6
+
+  osv:
+    name: ci
+    uses: schryer/pubkit/.github/workflows/job-osv.yml@v0.12.6
+
+  review:
+    name: ci
+    uses: schryer/pubkit/.github/workflows/job-review.yml@v0.12.6
+
+  sonar:
+    name: ci
+    needs: [test, browser]
+    uses: schryer/pubkit/.github/workflows/job-sonar.yml@v0.12.6
+    with: {"sonar-args": "-Dsonar.tests=test -Dsonar.exclusions=test/**", "report-property": "sonar.javascript.lcov.reportPaths"}
+    secrets: inherit
+
+  # The one check a ruleset requires: it passes only when every job
+  # above succeeded. None of them is ever skipped for not being asked for.
+  passed:
+    name: ci / passed
+    if: always()
+    needs: [test, browser, audit, osv, review, sonar]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "$RESULTS"
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' > /dev/null
+        env: { RESULTS: '${{ toJSON(needs) }}' }
+
+  # pubrel's release workflow: on a pull request, a code change records
+  # what it changes and a release is the bump its changes require; on
+  # main, a published version is tagged and released.
+  release:
+    needs: passed
+    uses: schryer/pubrel/.github/workflows/release.yml@v0.5.4
+    with: {"pubrel-version": "v0.5.4"}
+    permissions:
+      contents: write
