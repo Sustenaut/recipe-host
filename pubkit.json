@@ -7,5 +7,6 @@
       "sonar-args": "-Dsonar.tests=test -Dsonar.exclusions=test/**"
     },
     "release": {"pubrel": "0.5.4"}
-  }
+  },
+  "protect": {"checks": ["ci / passed", "SonarCloud Code Analysis"]}
 }
