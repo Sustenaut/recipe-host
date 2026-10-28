@@ -323,6 +323,24 @@ test('a session service for sign-in is read and checked', () => {
 });
 
 
+test('the page carries an Open Graph card for link previews, with the site\'s own image if it names one', () => {
+  const config = loadRepo(makeRepo({ 'recipe-host.yml': 'title: Family <Recipes>\ndescription: Our food\nurl: https://recipes.example/\n' })).config;
+  const page = pageHtml(config, { engine: 'https://cdn.example/app/' });
+  assert.match(page, /<meta property="og:title" content="Family &lt;Recipes&gt;">/);
+  assert.match(page, /<meta property="og:description" content="Our food">/);
+  assert.match(page, /<meta property="og:url" content="https:\/\/recipes.example\/">/);
+  assert.match(page, /<meta property="og:image" content="https:\/\/cdn.example\/app\/social.png">/);
+  assert.match(page, /<meta property="og:image:width" content="1200">/);
+  assert.match(page, /<meta name="twitter:card" content="summary_large_image">/);
+  assert.ok(fs.existsSync(new URL('../app/social.png', import.meta.url)), 'app/social.png is missing');
+  const own = loadRepo(makeRepo({ 'recipe-host.yml': 'image: https://recipes.example/card.jpg\n' }));
+  assert.deepEqual(own.errors, []);
+  const ownPage = pageHtml(own.config);
+  assert.match(ownPage, /<meta property="og:image" content="https:\/\/recipes.example\/card.jpg">/);
+  assert.doesNotMatch(ownPage, /og:image:width|og:url/);
+  assert.match(loadRepo(makeRepo({ 'recipe-host.yml': 'image: photos/card.jpg\n' })).errors[0], /image must be the https:\/\/ address/);
+});
+
 test('typst is found by absolute path, from $TYPST or else PATH, and never from a relative PATH entry', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typst-'));
   const bin = path.join(dir, process.platform === 'win32' ? 'typst.exe' : 'typst');

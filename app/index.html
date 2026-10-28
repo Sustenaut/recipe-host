@@ -17,6 +17,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{title}}</title>
 <meta name="description" content="{{description}}">
+<!-- The card LinkedIn, Facebook, Slack and the like show for a shared link.
+     Crawlers don't run the app, so every address shows this one card. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{title}}">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+{{ogUrl}}
+<meta property="og:image" content="{{ogImage}}">
+<meta property="og:image:alt" content="{{title}}">
+{{ogImageSize}}
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="{{engine}}logo.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="{{engine}}touch-icon.png">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
