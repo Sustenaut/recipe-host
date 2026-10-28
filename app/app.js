@@ -226,18 +226,28 @@ async function dataBase() {
   return atCommit((await latestSite()) ?? 'site');
 }
 
-// The settings of a fresh copy of this page from its own host: a newer
-// publish deploys a page naming its data and that data's hash, and only
-// then does a page with checked data switch to it. Null until the host has
-// the newer page, or when it can't be reached.
-async function hostedSettings() {
+// A fresh copy of this page from its own host: its settings, and the app
+// script it loads. A newer publish deploys a page naming its data and that
+// data's hash, and only then does a page with checked data switch to it.
+// Null until the host can be reached.
+async function hostedPage() {
   try {
     const res = await fetch(location.href.split('#')[0], { cache: 'no-cache' });
-    const json = res.ok && (await res.text()).match(/window\.RECIPE_HOST = (\{.*\});<\/script>/)?.[1];
-    return json ? JSON.parse(json) : null;
+    const text = res.ok ? await res.text() : '';
+    const json = text.match(/window\.RECIPE_HOST = (\{.*\});<\/script>/)?.[1];
+    const app = text.match(/<script defer src="([^"]*app\.js)"/)?.[1];
+    return json ? { settings: JSON.parse(json), app: app && new URL(app, location.href).href } : null;
   } catch {
     return null;
   }
+}
+
+// Whether `page` (from hostedPage()) differs from this one in more than its
+// data: a newer engine or other settings, which only a full reload brings in.
+function pageChanged(page) {
+  const mine = document.querySelector('script[src$="app.js"]')?.src;
+  const without = (settings) => JSON.stringify({ ...settings, data: null, dataIntegrity: null });
+  return (page.app && page.app !== mine) || without(page.settings) !== without(config);
 }
 
 const normalize = (s) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -363,25 +373,36 @@ document.addEventListener('alpine:init', () => {
     },
 
     // Switches to the newer publish without go(), so nothing typed or
-    // ticked meanwhile is lost.
+    // ticked meanwhile is lost; or reloads the page when the newer publish
+    // changed the page itself.
+    updateNote: null,
+
     async applyUpdate() {
       const base = atCommit(this.update);
       const before = { base: this.base, index: this.index, integrity: this.integrity };
       try {
+        const fresh = await hostedPage();
+        const deployed = fresh && fresh.settings.data && new URL(fresh.settings.data, location.href).href === base;
         // Checked data is replaced only by data the host's newer page
         // names the hash of; until that page is deployed, the bell stays lit.
-        if (this.integrity['index.json']) {
-          const fresh = await hostedSettings();
-          if (!fresh?.dataIntegrity || new URL(fresh.data, location.href).href !== base) return;
-          this.integrity = { 'index.json': fresh.dataIntegrity };
-        } else this.integrity = {};
+        if (this.integrity['index.json'] && !(deployed && fresh.settings.dataIntegrity)) {
+          this.updateNote = 'The newer recipes are still being published. Try again in a minute.';
+          return;
+        }
+        if (deployed && pageChanged(fresh)) {
+          location.reload();
+          return;
+        }
+        this.integrity = this.integrity['index.json'] ? { 'index.json': fresh.settings.dataIntegrity } : {};
         this.base = base;
         await this.loadIndex();
         this.update = null;
+        this.updateNote = null;
         if (this.recipe) this.recipe = await this.fetchJson(`recipes/${this.recipe.slug}.json`);
       } catch {
         // Keep showing this commit; the bell stays lit to try again.
         Object.assign(this, before);
+        this.updateNote = 'The newer recipes could not be loaded. Try again in a minute.';
       }
     },
 
