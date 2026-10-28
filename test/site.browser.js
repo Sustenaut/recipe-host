@@ -547,6 +547,7 @@ test('a page that names its data\'s hash reloads only into data its host names',
   await page.waitForTimeout(200);
   assert.equal(await page.textContent('.pure-menu-heading span'), 'Old checked recipes');
   assert.equal(await page.isVisible('.bell.active'), true);
+  assert.match(await page.textContent('.update-note'), /still being published/);
   // Nor while the host can't be reached.
   await page.route(`${base}checked.html`, (route) => route.abort());
   await page.click('.reload');
@@ -566,7 +567,38 @@ test('a page that names its data\'s hash reloads only into data its host names',
   await eventually(() => page.textContent('.pure-menu-heading span'), 'New checked recipes');
   await eventually(() => page.isVisible('.bell.active'), false);
   await page.waitForSelector('.steps li');
+  assert.equal(await page.isVisible('.update-note'), false);
   await page.unrouteAll();  forgetRefusals();
+});
+
+test('a newer publish that changes the page itself reloads the page', async () => {
+  const [old, newer] = ['f'.repeat(40), '1'.repeat(40)];
+  deployChecked(old, await publishExactly(old, 'Old checked recipes'));
+  const newIntegrity = await publishExactly(newer, 'New checked recipes');
+  let latest = old;
+  let asked = 0;
+  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => { asked += 1; return route.fulfill({ body: latest }); });
+  await page.clock.install();
+  await page.goto('about:blank');
+  await page.goto(`${base}checked.html#/recipe/salsa-verde`);
+  await page.waitForSelector('.steps li');
+  await eventually(() => asked > 0, true);
+  latest = newer;
+  await page.clock.runFor(60 * 60 * 1000);
+  await page.locator('.bell.active').waitFor();
+  // The newer page has other settings (here a new title), which swapping
+  // the data alone would not bring in: the page reloads, onto the same view.
+  const config = { ...loadConfig(FIXTURE), title: 'Renamed recipes' };
+  const html = pageHtml(config, { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${newer}/`, dataIntegrity: newIntegrity });
+  fs.writeFileSync(path.join(out, 'checked.html'), html);
+  await page.evaluate(() => { window.beforeReload = true; });
+  await page.click('.reload');
+  await page.waitForFunction(() => !window.beforeReload);
+  await page.waitForSelector('.steps li');
+  assert.equal(await page.evaluate(() => window.RECIPE_HOST.title), 'Renamed recipes');
+  assert.equal(await page.textContent('.pure-menu-heading span'), 'New checked recipes');
+  await page.unrouteAll();
+  forgetRefusals();
 });
 
 test('a page that reads the newest commit has no bell', async () => {

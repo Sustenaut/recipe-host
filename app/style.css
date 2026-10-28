@@ -96,6 +96,7 @@ a.pure-button { display: inline-flex; align-items: center; text-decoration: none
 .bell.active { color: var(--link); }
 .bell.active::after { content: ""; position: absolute; top: 0.3rem; right: 0.3rem; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
 .reload { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.25rem; }
+.update-note { color: var(--muted); font-size: 0.85rem; max-width: 16rem; }
 /* Who is signed in, on a site with login. */
 .account { display: flex; align-items: center; gap: 0.5rem; padding-left: 0.5rem; }
 .account .who { color: var(--muted); font-weight: 600; }
