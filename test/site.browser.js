@@ -24,6 +24,7 @@ let page;
 let base;
 let out;
 const errors = [];
+const loads = [];
 
 before(async () => {
   out = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-site-'));
@@ -36,10 +37,21 @@ before(async () => {
   page.on('pageerror', (err) => errors.push(err.message));
   page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
   await page.coverage.startJSCoverage({ resetOnNavigation: false });
+  // Each load's coverage is collected before the next one starts: a newer
+  // Chromium may load the next page in a new renderer, which would lose it.
+  for (const name of ['goto', 'reload']) {
+    const go = page[name].bind(page);
+    page[name] = async (...args) => {
+      loads.push(...await page.coverage.stopJSCoverage());
+      await page.coverage.startJSCoverage({ resetOnNavigation: false });
+      return go(...args);
+    };
+  }
 });
 
 after(async () => {
-  const app = (await page.coverage.stopJSCoverage()).filter((e) => e.url.endsWith('/engine/app/app.js'));
+  loads.push(...await page.coverage.stopJSCoverage());
+  const app = loads.filter((e) => e.url.endsWith('/engine/app/app.js'));
   fs.mkdirSync('coverage', { recursive: true });
   fs.writeFileSync('coverage/browser.lcov.info', v8ToLcov(app, 'app/app.js'));
   await browser?.close();
