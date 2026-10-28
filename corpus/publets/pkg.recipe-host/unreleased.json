@@ -1,4 +1,9 @@
 {
-  "changes": [],
+  "changes": [
+    {
+      "category": "added",
+      "change": "login.session in recipe-host.yml signs readers in through a service on the same site that keeps its own cookie and the readers' favourites (such as the share.schryer.eu portal), instead of OpenID Connect in the page; recipe-host serve --mock-login stands in for one, and --mock-openid for the OpenID Connect way."
+    }
+  ],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."
 }

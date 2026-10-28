@@ -308,6 +308,21 @@ test('login settings in recipe-host.yml are read and checked', () => {
   assert.match(alone.errors[0], /favourites needs login/);
 });
 
+test('a session service for sign-in is read and checked', () => {
+  const good = loadRepo(makeRepo({ 'recipe-host.yml': 'login:\n  session: https://share.schryer.eu/recipes/v1/\n  required: true\n' }));
+  assert.deepEqual(good.errors, []);
+  assert.deepEqual(good.config.login, { session: 'https://share.schryer.eu/recipes/v1/', required: true });
+  const errors = (yml) => loadRepo(makeRepo({ 'recipe-host.yml': yml })).errors;
+  assert.match(errors('login:\n  session: http://share.example/\n')[0], /login.session must be the https:\/\/ address/);
+  assert.match(errors('login:\n  session: https://share.example/v1\n')[0], /ending in \//);
+  assert.match(errors('login:\n  session: https://share.example/\nfavourites: https://presign.example/\n')[0], /a session service keeps favourites itself/);
+  assert.match(errors('login:\n  session: https://share.example/\n  issuer: https://auth.example/\n  client: x\n')[0], /either session or issuer/);
+  const page = pageHtml({ title: 'R', description: '', repo: 'o/r', branch: 'main', login: good.config.login, favourites: null });
+  assert.doesNotMatch(page, /oidc-client-ts/);
+  assert.match(page, /"login":\{"session":"https:\/\/share.schryer.eu\/recipes\/v1\/","required":true\}/);
+});
+
+
 test('typst is found by absolute path, from $TYPST or else PATH, and never from a relative PATH entry', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typst-'));
   const bin = path.join(dir, process.platform === 'win32' ? 'typst.exe' : 'typst');

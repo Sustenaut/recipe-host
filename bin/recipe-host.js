@@ -25,7 +25,9 @@ const USAGE = `Usage: recipe-host <command> [options]
   request --issue FILE     apply the request in a GitHub issue (JSON from the API)
   serve [--port N]         build, then preview the site at http://localhost:N
         [--mock-login]     sign in and keep favourites through a local stand-in
-                           for auth.sustenaut.eu and the favourites service
+                           for a session service like share.schryer.eu's
+        [--mock-openid]    the same through a stand-in OpenID Connect issuer
+                           and favourites service with a bucket
 
   --root DIR               the recipe repository (default: current folder)
   --no-cards               build without the PDF cards`;
@@ -35,7 +37,8 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--no-cards') args.cards = false;
-    else if (a === '--mock-login') args.mockLogin = true;
+    else if (a === '--mock-login') args.mockLogin = 'session';
+    else if (a === '--mock-openid') args.mockLogin = 'openid';
     else if (a.startsWith('--')) args[a.slice(2)] = argv[++i];
     else args._.push(a);
   }
@@ -135,7 +138,7 @@ switch (command) {
     // Everything on one local origin: the app from this checkout, the
     // libraries from node_modules, and the built data.
     const out = path.resolve(args.out ?? path.join(root, '_site'));
-    const options = { page: args.mockLogin ? { ...LOCAL_PAGE, ...mockPageSettings() } : LOCAL_PAGE };
+    const options = { page: args.mockLogin ? { ...LOCAL_PAGE, ...mockPageSettings(args.mockLogin) } : LOCAL_PAGE };
     if (args.cards === false) options.cards = false;
     const repo = buildSite(root, out, options);
     report(repo);

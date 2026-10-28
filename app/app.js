@@ -38,25 +38,13 @@ function localFavourites(name) {
   };
 }
 
-// A file in the signed-in reader's own bucket, reached through the
-// favourites service (`favourites` in recipe-host.yml). The service checks
-// the access token and answers a link valid for a few minutes; the page
-// never holds the bucket's keys. The first time, what this browser kept is
-// carried over.
-function remoteFavourites(service, name, token, local) {
-  const key = `favourites/${name}.json`;
-  async function link(method) {
-    const res = await fetch(new URL('v1/presign', service), {
-      method: 'POST',
-      headers: { authorization: `Bearer ${await token()}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ method, key }),
-    });
-    if (!res.ok) throw new Error(`The favourites service answered ${res.status}`);
-    return (await res.json()).url;
-  }
+// One JSON file per repository, kept for the signed-in reader somewhere
+// else. `get()` and `put(body)` answer fetch Responses; a 404 means nothing
+// is kept yet, and then what this browser kept is carried over.
+function keptFavourites(get, put, local) {
   return {
     async load() {
-      const res = await fetch(await link('GET'), { cache: 'no-store' });
+      const res = await get();
       if (res.status === 404) {
         const slugs = await local.load();
         if (slugs.length) await this.save(slugs);
@@ -66,65 +54,124 @@ function remoteFavourites(service, name, token, local) {
       return readFavourites(await res.json());
     },
     async save(slugs) {
-      const res = await fetch(await link('PUT'), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: favouritesDocument(slugs) });
+      const res = await put(favouritesDocument(slugs));
       if (!res.ok) throw new Error(`Could not save your favourites (${res.status})`);
     },
   };
 }
 
-// `token` is null for a reader who is not signed in.
-function favouritesStore(settings, name, token = null) {
-  const local = localFavourites(name);
-  if (!settings.favourites || !token) return local;
-  return remoteFavourites(new URL(settings.favourites, location.href), name, token, local);
-}
+const JSON_BODY = { 'content-type': 'application/json' };
 
 // ---- signing in
-// A site with `login` in recipe-host.yml signs readers in with OpenID
-// Connect: the code flow with PKCE, through oidc-client-ts, coming back to
-// this same page (with its `?repo=`). Tokens are kept for the tab only and
-// renewed with the refresh token. The addresses may be relative, which the
-// local mock uses. Only `?repo=` survives the trip.
-function signInManager(settings) {
-  if (!settings.login) return null;
-  // This page without what the sign-in adds on its way back.
-  const here = `${location.origin}${location.pathname}${repo === asked ? `?repo=${repo}` : ''}`;
-  return new oidc.UserManager({
+// `login` in recipe-host.yml signs readers in one of two ways. Only
+// `?repo=` survives the trip, and the addresses may be relative, which the
+// local mock (lib/mock-login.js) uses.
+const shownPage = `${location.origin}${location.pathname}${repo === asked ? `?repo=${repo}` : ''}`;
+
+// `issuer` and `client`: OpenID Connect in the page, the code flow with
+// PKCE through oidc-client-ts, coming back to this page. Tokens are kept
+// for the tab only and renewed with the refresh token. Favourites, when
+// `favourites` names a service, go to a file in the reader's own bucket:
+// the service checks the access token and answers a link valid for a few
+// minutes, so the page never holds the bucket's keys.
+function openIdLogin(settings) {
+  const auth = new oidc.UserManager({
     authority: new URL(settings.login.issuer, location.href).href,
     client_id: settings.login.client,
-    redirect_uri: here,
-    post_logout_redirect_uri: here,
+    redirect_uri: shownPage,
+    post_logout_redirect_uri: shownPage,
     scope: 'openid profile',
     userStore: new oidc.WebStorageStateStore({ store: sessionStorage }),
     automaticSilentRenew: true,
   });
-}
 
-const auth = signInManager(config);
-
-// The signed-in reader, or null: finishes a sign-in that has just come back
-// to this page, or renews one the tab already had.
-async function signedIn() {
-  const params = new URLSearchParams(location.search);
-  if (params.has('state') && (params.has('code') || params.has('error'))) {
-    let user = null;
-    try {
-      user = await auth.signinCallback();
-    } finally {
-      // Off the address bar, so a reload does not replay it.
-      history.replaceState(null, '', auth.settings.redirect_uri + (user?.state?.hash ?? ''));
-    }
-    return user;
+  async function accessToken() {
+    let user = await auth.getUser();
+    if (!user || user.expired) user = await auth.signinSilent();
+    return user.access_token;
   }
-  const user = await auth.getUser();
-  if (user && !user.expired) return user;
-  return user?.refresh_token ? auth.signinSilent().catch(() => null) : null;
+
+  async function link(service, method, key) {
+    const res = await fetch(new URL('v1/presign', service), {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await accessToken()}`, ...JSON_BODY },
+      body: JSON.stringify({ method, key }),
+    });
+    if (!res.ok) throw new Error(`The favourites service answered ${res.status}`);
+    return (await res.json()).url;
+  }
+
+  return {
+    // The signed-in reader's name, or null: finishes a sign-in that has
+    // just come back to this page, or renews one the tab already had.
+    async signedIn() {
+      const params = new URLSearchParams(location.search);
+      let user;
+      if (params.has('state') && (params.has('code') || params.has('error'))) {
+        try {
+          user = await auth.signinCallback();
+        } finally {
+          // Off the address bar, so a reload does not replay it.
+          history.replaceState(null, '', shownPage + (user?.state?.hash ?? ''));
+        }
+      } else {
+        user = await auth.getUser();
+        if (user?.expired) user = user.refresh_token ? await auth.signinSilent().catch(() => null) : null;
+      }
+      return user ? (user.profile.name ?? user.profile.preferred_username ?? 'Signed in') : null;
+    },
+    signIn: () => void auth.signinRedirect({ state: { hash: location.hash } }),
+    signOut: () => void auth.signoutRedirect(),
+    favourites(name, local) {
+      if (!settings.favourites) return local;
+      const service = new URL(settings.favourites, location.href);
+      const key = `favourites/${name}.json`;
+      return keptFavourites(
+        async () => fetch(await link(service, 'GET', key), { cache: 'no-store' }),
+        async (body) => fetch(await link(service, 'PUT', key), { method: 'PUT', headers: JSON_BODY, body }),
+        local);
+    },
+  };
 }
 
-async function accessToken() {
-  let user = await auth.getUser();
-  if (!user || user.expired) user = await auth.signinSilent();
-  return user.access_token;
+// `session`: a service on the same site (a sibling host under the same
+// domain) that signs readers in itself and remembers them with its own
+// cookie, which the browser sends along. It answers
+//   GET me                               {email, name?}, or 401
+//   GET sign-in?rd=<page>, sign-out?rd=  sends the reader there and back
+//   GET, PUT favourites/<owner>/<name>.json   the reader's favourites (404: none yet)
+function sessionLogin(settings) {
+  const service = new URL(settings.login.session, location.href);
+  const away = (path) => location.assign(`${new URL(path, service)}?rd=${encodeURIComponent(shownPage + location.hash)}`);
+  const call = (path, init = {}) => fetch(new URL(path, service), { credentials: 'include', cache: 'no-store', ...init });
+  return {
+    async signedIn() {
+      const res = await call('me');
+      if (res.status === 401) return null;
+      if (!res.ok) throw new Error(`the sign-in service answered ${res.status}`);
+      const me = await res.json();
+      return me.name || me.email;
+    },
+    signIn: () => away('sign-in'),
+    signOut: () => away('sign-out'),
+    favourites(name, local) {
+      const path = `favourites/${name}.json`;
+      return keptFavourites(() => call(path), (body) => call(path, { method: 'PUT', headers: JSON_BODY, body }), local);
+    },
+  };
+}
+
+function signInWith(settings) {
+  if (!settings.login) return null;
+  return settings.login.session ? sessionLogin(settings) : openIdLogin(settings);
+}
+
+const login = signInWith(config);
+
+// This browser's favourites, or the signed-in reader's kept elsewhere.
+function favouritesStore(name, signedIn = false) {
+  const local = localFavourites(name);
+  return signedIn ? login.favourites(name, local) : local;
 }
 
 // Links in recipe Markdown point at repository files; on the site they
@@ -238,21 +285,21 @@ document.addEventListener('alpine:init', () => {
     form: {},
     filters: [],
     favourites: [],
-    store: favouritesStore(config, repo),
-    signsIn: Boolean(auth),
+    store: favouritesStore(repo),
+    signsIn: Boolean(login),
     account: null,
     signInNeeded: false,
     signInError: null,
 
     async init() {
-      if (auth) {
-        const user = await signedIn().catch((err) => {
+      if (login) {
+        const name = await login.signedIn().catch((err) => {
           this.signInError = err.error === 'access_denied' ? 'Sign-in was cancelled.' : `Sign-in did not work: ${err.message}`;
           return null;
         });
-        if (user) {
-          this.account = { name: user.profile.name ?? user.profile.preferred_username ?? 'Signed in' };
-          this.store = favouritesStore(config, repo, accessToken);
+        if (name) {
+          this.account = { name };
+          this.store = favouritesStore(repo, true);
         } else if (config.login.required) {
           this.signInNeeded = true;
           return;
@@ -281,11 +328,11 @@ document.addEventListener('alpine:init', () => {
     },
 
     signIn() {
-      void auth.signinRedirect({ state: { hash: location.hash } });
+      login.signIn();
     },
 
     signOut() {
-      void auth.signoutRedirect();
+      login.signOut();
     },
 
     // ---- newer publishes
