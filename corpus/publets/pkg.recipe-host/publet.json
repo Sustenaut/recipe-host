@@ -2,7 +2,7 @@
   "claims": {
     "identity": {
       "class": "archival",
-      "content": "recipe-host 0.2.1 is released as v0.2.1 from commit 1bc00e705d5d8aba27ab5fc811c45b617d630d4e.",
+      "content": "recipe-host 0.2.2 is released as v0.2.2 from commit 6a4170e234c1742ad955a614ba14cf8456dd3722.",
       "data": {
         "columns": [
           {
@@ -27,25 +27,25 @@
         "rows": [
           [
             "recipe-host",
-            "0.2.1",
+            "0.2.2",
             "",
             "",
-            "v0.2.1",
-            "1bc00e705d5d8aba27ab5fc811c45b617d630d4e"
+            "v0.2.2",
+            "6a4170e234c1742ad955a614ba14cf8456dd3722"
           ]
         ]
       },
-      "scope": "the published release v0.2.1 of recipe-host",
+      "scope": "the published release v0.2.2 of recipe-host",
       "sources": [
         {
           "ref": "recipe-host",
-          "revision": "1bc00e705d5d8aba27ab5fc811c45b617d630d4e"
+          "revision": "6a4170e234c1742ad955a614ba14cf8456dd3722"
         }
       ]
     },
     "release": {
       "class": "archival",
-      "content": "recipe-host 0.2.1 was released on 2026-10-28 from commit 1bc00e705d5d8aba27ab5fc811c45b617d630d4e with these changes.",
+      "content": "recipe-host 0.2.2 was released on 2026-10-28 from commit 6a4170e234c1742ad955a614ba14cf8456dd3722 with these changes.",
       "data": {
         "columns": [
           {
@@ -57,19 +57,19 @@
         ],
         "rows": [
           [
-            "added",
-            "login.session in recipe-host.yml signs readers in through a service on the same site that keeps its own cookie and the readers' favourites (such as the share.schryer.eu portal), instead of OpenID Connect in the page; recipe-host serve --mock-login stands in for one, and --mock-openid for the OpenID Connect way."
+            "fixed",
+            "The Reload button now reloads the whole page when a newer publish changed the page itself (a new engine or settings, such as login), and says so when the newer page is still being published, instead of doing nothing."
           ]
         ]
       },
       "depends": [
         "#identity"
       ],
-      "scope": "the published release v0.2.1 of recipe-host",
+      "scope": "the published release v0.2.2 of recipe-host",
       "sources": [
         {
           "ref": "recipe-host",
-          "revision": "1bc00e705d5d8aba27ab5fc811c45b617d630d4e"
+          "revision": "6a4170e234c1742ad955a614ba14cf8456dd3722"
         }
       ]
     }
