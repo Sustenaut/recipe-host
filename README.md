@@ -156,15 +156,38 @@ checks the change itself before it opens the pull request.
 
 ## Sign-in and favourites that follow the reader
 
-A site can sign readers in with any OpenID Connect provider and keep each
-reader's favourites in their own S3 bucket. Both are off unless
-`recipe-host.yml` turns them on (see [FORMAT.md](FORMAT.md)):
+A site can sign readers in and keep each reader's favourites for them, so
+they follow the reader between browsers. It is off unless `recipe-host.yml`
+turns it on (see [FORMAT.md](FORMAT.md)), in one of two ways.
+
+**A session service on the same site** (what recipes.schryer.eu uses, with
+the share.schryer.eu portal): a service under the same domain signs readers
+in itself, remembers them with its own cookie, and keeps their favourites.
+
+```yaml
+login:
+  session: https://share.schryer.eu/recipes/v1/
+  required: true         # show nothing until signed in; false: sign-in only for favourites
+```
+
+The page calls it with the browser's cookie (`credentials: 'include'`), so
+the service must allow the site's origin with credentials (CORS):
+
+| Request | Answer |
+|---|---|
+| `GET me` | `{"email", "name"?}`, or 401 when not signed in |
+| `GET sign-in?rd=<page>` | sends the reader to sign in, then back to `rd` |
+| `GET sign-out?rd=<page>` | ends the session, then back to `rd` |
+| `GET favourites/<owner>/<name>.json` | the reader's favourites for that repository, or 404 for none yet |
+| `PUT favourites/<owner>/<name>.json` | saves them (`Content-Type: application/json`) |
+
+**OpenID Connect in the page**, with favourites in the reader's own bucket:
 
 ```yaml
 login:
   issuer: https://auth.sustenaut.eu/realms/sustenaut
   client: recipes        # a public client with PKCE, redirecting to the site
-  required: true         # show nothing until signed in; false: sign-in only for favourites
+  required: true
 favourites: https://presign.sustenaut.eu/
 ```
 
@@ -174,15 +197,16 @@ favourites: https://presign.sustenaut.eu/
 - The favourites service answers `POST v1/presign` with the reader's access
   token and `{"method": "GET" | "PUT", "key": "favourites/<owner>/<name>.json"}`
   with `{"url", "expires"}`: a link, valid a few minutes, to that file in
-  the bucket the reader registered. The page never holds bucket keys. A
-  missing file is a 404, and the page then starts from what the browser kept.
-- `required: true` hides the site, not the recipes: those stay public on
-  GitHub and jsDelivr.
+  the bucket the reader registered. The page never holds bucket keys.
 
-`recipe-host serve --mock-login` previews a site this way without the real
-services: [lib/mock-login.js](lib/mock-login.js) stands in for the sign-in
-(two test accounts instead of a wallet) and for the favourites service and
-bucket, in memory, on the preview's own origin.
+Either way, a missing favourites file is a 404 and the page then starts from
+what the browser kept. `required: true` hides the site, not the recipes:
+those stay public on GitHub and jsDelivr.
+
+`recipe-host serve --mock-login` previews a site with a session service
+without the real one, and `--mock-openid` the other way:
+[lib/mock-login.js](lib/mock-login.js) stands in for both, with two test
+accounts and everything kept in memory, on the preview's own origin.
 
 ## Working on recipes locally
 

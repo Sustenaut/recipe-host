@@ -281,7 +281,7 @@ test('?repo= naming a repository with nothing published says how to set it up', 
 // Sustenaut sign-in and keeping favourites in the mock bucket.
 test('a site with login asks readers to sign in and keeps their favourites in their bucket', async () => {
   const loginOut = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-login-'));
-  buildSite(FIXTURE, loginOut, { cards: false, page: { ...LOCAL_PAGE, ...mockPageSettings() }, log: () => {} });
+  buildSite(FIXTURE, loginOut, { cards: false, page: { ...LOCAL_PAGE, ...mockPageSettings('openid') }, log: () => {} });
   const mock = mockLogin();
   const loginServer = serve(loginOut, { mock }).listen(0);
   const site = `http://localhost:${loginServer.address().port}/`;
@@ -347,7 +347,7 @@ test('a site with login asks readers to sign in and keeps their favourites in th
 
     // A published page that needs sign-in asks nothing of GitHub or the
     // recipe data before it: only the page itself and its libraries load.
-    const pinned = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, ...mockPageSettings(), data: 'https://cdn.jsdelivr.net/gh/example/recipes@abc/' });
+    const pinned = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, ...mockPageSettings('openid'), data: 'https://cdn.jsdelivr.net/gh/example/recipes@abc/' });
     fs.writeFileSync(path.join(loginOut, 'pinned.html'), pinned);
     const asked = [];
     const record = (req) => asked.push(new URL(req.url()));
@@ -374,6 +374,57 @@ test('a site with login asks readers to sign in and keeps their favourites in th
     // Leave the page first, so nothing it still loads meets a closed server.
     await page.goto('about:blank');
     loginServer.close();
+  }
+});
+
+// Signing in through a session service on the same site, like
+// share.schryer.eu: its own cookie, and favourites it keeps itself.
+test('a site with a session service signs readers in there and keeps their favourites there', async () => {
+  const sessionOut = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-session-'));
+  buildSite(FIXTURE, sessionOut, { cards: false, page: { ...LOCAL_PAGE, ...mockPageSettings('session') }, log: () => {} });
+  const mock = mockLogin();
+  const sessionServer = serve(sessionOut, { mock }).listen(0);
+  const site = `http://localhost:${sessionServer.address().port}/`;
+  const [anna, ben] = MOCK_ACCOUNTS;
+  const kept = (account) => {
+    const file = mock.kept.get(`${account.email}/favourites/example/recipes.json`);
+    return file && JSON.parse(file).favourites;
+  };
+  const logged = errors.length;
+  try {
+    // No sign-in library: the service does the signing in.
+    await page.goto('about:blank');
+    await page.goto(`${site}?repo=example/recipes#/recipes`);
+    await page.waitForSelector('.sign-in button');
+    assert.equal(await page.evaluate(() => typeof window.oidc), 'undefined');
+    await page.click('.sign-in button');
+    await page.click(`text=Sign in as ${anna.name}`);
+    await page.waitForSelector('.row');
+    assert.equal(page.url(), `${site}?repo=example/recipes#/recipes`);
+    assert.equal(await page.textContent('.account .who'), anna.name);
+
+    await page.click('.row:has-text("Salsa verde") .star');
+    await eventually(() => kept(anna), ['salsa-verde']);
+    await page.goto('about:blank');
+    await page.goto(`${site}#/`);
+    await page.waitForSelector('.card');
+    assert.deepEqual(await page.locator('.card strong').allTextContents(), ['Salsa verde']);
+
+    await page.click('.account button');
+    await page.waitForSelector('.sign-in button');
+    await page.evaluate(() => localStorage.setItem('recipe-host:favourites:example/recipes', JSON.stringify({ version: 1, favourites: ['herb-salad'] })));
+    await page.click('.sign-in button');
+    await page.click(`text=Sign in as ${ben.name}`);
+    await page.waitForSelector('.card');
+    assert.deepEqual(await page.locator('.card strong').allTextContents(), ['Herb salad']);
+    assert.deepEqual(kept(ben), ['herb-salad']);
+    await page.evaluate(() => localStorage.clear());
+    await page.click('.account button');
+    await page.waitForSelector('.sign-in button');
+    assert.deepEqual(errors.slice(logged).filter((e) => !/40[14]/.test(e)), []);
+    errors.splice(logged);
+  } finally {
+    sessionServer.close();
   }
 });
 

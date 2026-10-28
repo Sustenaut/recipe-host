@@ -172,8 +172,51 @@ test('the mock answers only its own paths, preflights, and oversized bodies', as
 });
 
 test('the preview page settings point at the mock', () => {
-  assert.deepEqual(mockPageSettings(), {
+  assert.deepEqual(mockPageSettings(), { login: { session: '/mock/session/', required: true }, favourites: null });
+  assert.deepEqual(mockPageSettings('openid'), {
     login: { issuer: '/mock/auth/realms/sustenaut', client: 'recipes', required: true },
     favourites: '/mock/presign/',
   });
+});
+
+// Signs in to the session service as a test account; returns the cookie.
+async function sessionCookie(account = '0', rd = `${base}/recipes/#/`) {
+  const res = await fetch(`${base}/mock/session/sign-in?rd=${encodeURIComponent(rd)}`, form({ account }));
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get('location'), rd);
+  return res.headers.get('set-cookie').split(';')[0];
+}
+
+test('the session service signs in, says who, and signs out, back to the page', async () => {
+  const page = await (await fetch(`${base}/mock/session/sign-in?rd=x`)).text();
+  assert.match(page, /Sign in as Anna Tester/);
+  const cookie = await sessionCookie();
+  const me = await fetch(`${base}/mock/session/me`, { headers: { cookie } });
+  assert.deepEqual(await me.json(), { email: 'anna@example.org', name: 'Anna Tester' });
+  assert.equal((await fetch(`${base}/mock/session/me`)).status, 401);
+  const out = await fetch(`${base}/mock/session/sign-out?rd=${encodeURIComponent(`${base}/recipes/`)}`, { redirect: 'manual' });
+  assert.equal(out.headers.get('location'), `${base}/recipes/`);
+  assert.match(out.headers.get('set-cookie'), /Max-Age=0/);
+  // Cancelling, or a page elsewhere, goes back without a session.
+  const cancel = await fetch(`${base}/mock/session/sign-in?rd=${encodeURIComponent('http://evil.test/')}`, form({ cancel: '1' }));
+  assert.equal(cancel.headers.get('location'), `${base}/`);
+  assert.equal(cancel.headers.get('set-cookie'), null);
+});
+
+test('the session service keeps each account its own favourites', async () => {
+  const anna = await sessionCookie('0');
+  const ben = await sessionCookie('1');
+  const file = `${base}/mock/session/favourites/a/b.json`;
+  const put = (cookie, body, type = 'application/json') => fetch(file, { method: 'PUT', headers: { cookie, 'content-type': type }, body });
+  assert.equal((await fetch(file, { headers: { cookie: anna } })).status, 404);
+  assert.equal((await put(anna, '{"favourites":["x"]}')).status, 200);
+  assert.deepEqual((await (await fetch(file, { headers: { cookie: anna } })).json()).favourites, ['x']);
+  assert.equal((await fetch(file, { headers: { cookie: ben } })).status, 404);
+  assert.equal(mock.kept.size, 1);
+  // Refusals: not signed in, not JSON, a bad name, too big.
+  assert.equal((await fetch(file)).status, 401);
+  assert.equal((await put(anna, 'x', 'text/plain')).status, 415);
+  assert.equal((await put(anna, 'not json')).status, 400);
+  assert.equal((await fetch(`${base}/mock/session/favourites/../b.json`, { headers: { cookie: anna } })).status, 404);
+  assert.equal((await put(anna, JSON.stringify({ x: 'y'.repeat(70 * 1024) }))).status, 413);
 });

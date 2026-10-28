@@ -33,8 +33,8 @@ Read README.md first for what this is. This file is for changing it.
   `openRequest`, and tests for both the change and its refusals.
 - **Sign-in is optional and generic.** Only `login` and `favourites` in
   `recipe-host.yml` turn it on; a site without them loads no sign-in code.
-  The app talks standard OpenID Connect and the favourites service's one
-  endpoint (README), never anything specific to one provider, and keeps no
+  The app talks either a session service's five requests or standard
+  OpenID Connect and the favourites service's one endpoint (README), never anything specific to one provider, and keeps no
   storage keys. A change to that endpoint changes `lib/mock-login.js` too.
 - **Text from issues is untrusted.** The action passes the issue to node
   through a file and environment variables, never by interpolating it into
@@ -52,7 +52,7 @@ Read README.md first for what this is. This file is for changing it.
 | `lib/requests.js` | Add, merge and substitute: issue body in, files changed, pull request described. |
 | `bin/recipe-host.js` | The command line. |
 | `lib/page.js`, `lib/serve.js` | The site's page with its settings filled in; the local preview server. |
-| `lib/mock-login.js` | A stand-in for the sign-in (OpenID Connect) and the favourites service and bucket, for `serve --mock-login` and the tests. It is the contract the real favourites service keeps. |
+| `lib/mock-login.js` | A stand-in for a session service, and for an OpenID Connect sign-in with the favourites service and bucket, for `serve --mock-login` / `--mock-openid` and the tests. It is the contract the real services keep. |
 | `app/` | The site: `index.html` (views and dialogs), `app.js` (state and requests), `style.css`. |
 | `cards/recipe-card.typ` | The A5 card, fed plain-text JSON by `cardData`. |
 | `action.yml` | The GitHub Action that recipe repositories run. |
