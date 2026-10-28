@@ -1,4 +1,9 @@
 {
-  "changes": [],
+  "changes": [
+    {
+      "category": "added",
+      "change": "The site page carries Open Graph tags (title, description, url and a 1200×630 image), so a link shared on LinkedIn, Slack and the like shows a preview card. The image is the recipe-host logo (app/social.png) unless recipe-host.yml names its own with image."
+    }
+  ],
   "comment": "Changes not yet released. One row per change: category changed or removed (a published interface changed: major), added (a feature: minor), or fixed or security (patch). `pubrel add` appends one; `pubrel summary` sets the release's summary; `pubrel prepare` moves them into the package publet."
 }

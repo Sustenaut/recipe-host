@@ -19,6 +19,9 @@ description: Family recipes, each with a printable A5 card.
 repo: schryer/recipes           # owner/name on GitHub
 url: https://schryer.eu/recipes/ # where the site is served; printed on cards
 categories: [mains, sauces, sides, desserts, baking, drinks]  # front page order
+# Optional: the picture a shared link's preview card shows (LinkedIn, Slack…),
+# an https address (*checked*), 1200×630 or larger. Default: the recipe-host logo.
+image: https://recipes.schryer.eu/card.jpg
 # Optional: sign readers in and keep their favourites for them (README), either
 # through a session service on the same site ...
 login:
