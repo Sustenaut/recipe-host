@@ -30,7 +30,7 @@ jobs:
   sonar:
     name: ci
     needs: [test, browser]
-    uses: schryer/pubkit/.github/workflows/job-sonar.yml@v0.12.6
+    uses: schryer/pubkit/.github/workflows/job-sonar.yml@v0.14.2
     with: {"sonar-args": "-Dsonar.tests=test -Dsonar.exclusions=test/**", "report-property": "sonar.javascript.lcov.reportPaths"}
     secrets: inherit
 
