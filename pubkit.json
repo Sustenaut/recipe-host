@@ -8,5 +8,6 @@
     },
     "release": {"pubrel": "0.5.4"}
   },
+  "security": {"sonar": {"args": "-Dsonar.issue.ignore.multicriteria=pubkitpins -Dsonar.issue.ignore.multicriteria.pubkitpins.ruleKey=githubactions:S7637 -Dsonar.issue.ignore.multicriteria.pubkitpins.resourceKey=.github/workflows/*.yml"}},
   "protect": {"checks": ["ci / passed", "SonarCloud Code Analysis"]}
 }

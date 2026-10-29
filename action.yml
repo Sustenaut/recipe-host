@@ -69,7 +69,7 @@ runs:
       if: inputs.command != 'request'
       shell: bash
       env:
-        ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/
+        ENGINE: https://cdn.jsdelivr.net/gh/Sustenaut/recipe-host@${{ github.action_ref }}/app/
         TYPST: /usr/local/bin/typst
       run: node "$GITHUB_ACTION_PATH/bin/recipe-host.js" build --out "$RUNNER_TEMP/site" --engine "$ENGINE"
 
@@ -101,7 +101,7 @@ runs:
       shell: bash
       env:
         DATA: https://cdn.jsdelivr.net/gh/${{ github.repository }}@${{ steps.site.outputs.sha }}/
-        ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/
+        ENGINE: https://cdn.jsdelivr.net/gh/Sustenaut/recipe-host@${{ github.action_ref }}/app/
       run: |
         cd "$RUNNER_TEMP/site"
         { find . -type f ! -path './.git/*' | sed "s|^\./|$DATA|"; printf '%s\n' "${ENGINE}app.js" "${ENGINE}style.css"; } \
@@ -130,7 +130,7 @@ runs:
       shell: bash
       env:
         DATA: https://cdn.jsdelivr.net/gh/${{ github.repository }}@${{ steps.site.outputs.sha }}/
-        ENGINE: https://cdn.jsdelivr.net/gh/schryer/recipe-host@${{ github.action_ref }}/app/
+        ENGINE: https://cdn.jsdelivr.net/gh/Sustenaut/recipe-host@${{ github.action_ref }}/app/
       run: |
         mkdir -p "$RUNNER_TEMP/web"
         node "$GITHUB_ACTION_PATH/bin/recipe-host.js" page --out "$RUNNER_TEMP/web/index.html" --engine "$ENGINE" --data "$DATA" \

@@ -21,7 +21,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/schryer/recipe-host.git"
+    "url": "https://github.com/Sustenaut/recipe-host.git"
   },
   "engines": {
     "node": ">=20"
