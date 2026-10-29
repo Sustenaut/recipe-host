@@ -102,7 +102,7 @@ repository's `site` branch instead, and its buttons open requests there.
        runs-on: ubuntu-latest
        steps:
          - uses: actions/checkout@v4
-         - uses: schryer/recipe-host@v0.1.0
+         - uses: Sustenaut/recipe-host@v0.1.0
            with:
              command: ${{ github.event_name == 'pull_request' && 'check' || 'publish' }}
              # Optional: copy index.html to your own web server.
@@ -134,7 +134,7 @@ repository's `site` branch instead, and its buttons open requests there.
        runs-on: ubuntu-latest
        steps:
          - uses: actions/checkout@v4
-         - uses: schryer/recipe-host@v0.1.0
+         - uses: Sustenaut/recipe-host@v0.1.0
            with:
              command: request
    ```
@@ -211,7 +211,7 @@ accounts and everything kept in memory, on the preview's own origin.
 ## Working on recipes locally
 
 ```sh
-npm install -g github:schryer/recipe-host#v0.1.0
+npm install -g github:Sustenaut/recipe-host#v0.1.0
 cd recipes
 recipe-host link recipes/sauces/new-sauce.md   # link ingredient lines
 recipe-host check                              # every rule in FORMAT.md

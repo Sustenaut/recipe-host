@@ -283,7 +283,7 @@ test('?repo= naming a repository with nothing published says how to set it up', 
   const article = page.locator('article:has-text("No recipes here yet")');
   assert.match(await article.textContent(), /This repository \(nobody\/nothing\) has not yet been set up to host recipes\./);
   assert.equal(await article.locator('a', { hasText: 'nobody/nothing' }).getAttribute('href'), 'https://github.com/nobody/nothing');
-  assert.equal(await article.locator('a', { hasText: 'these instructions' }).getAttribute('href'), 'https://github.com/schryer/recipe-host#set-up-a-recipe-repository');
+  assert.equal(await article.locator('a', { hasText: 'these instructions' }).getAttribute('href'), 'https://github.com/Sustenaut/recipe-host#set-up-a-recipe-repository');
   assert.equal(await page.isVisible('article:has-text("Something went wrong")'), false);
   await page.unrouteAll();
   errors.splice(before); // the browser logs the 404s themselves

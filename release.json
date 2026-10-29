@@ -16,7 +16,7 @@
   "name": "recipe-host",
   "package": "pkg.recipe-host",
   "tag": "PKG-RECHOS-10-2026",
-  "install": "uses: schryer/recipe-host@{tag}",
+  "install": "uses: Sustenaut/recipe-host@{tag}",
   "jsdelivr": {
     "files": [
       "app/app.js",

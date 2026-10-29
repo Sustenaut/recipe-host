@@ -88,7 +88,7 @@
   <article x-show="error" x-cloak><h1>Something went wrong</h1><p x-text="error"></p></article>
   <article x-show="notSetUp" x-cloak>
     <h1>No recipes here yet</h1>
-    <p>This repository (<a :href="github" x-text="repo"></a>) has not yet been set up to host recipes. If you would like to do that, please follow <a href="https://github.com/schryer/recipe-host#set-up-a-recipe-repository">these instructions</a>.</p>
+    <p>This repository (<a :href="github" x-text="repo"></a>) has not yet been set up to host recipes. If you would like to do that, please follow <a href="https://github.com/Sustenaut/recipe-host#set-up-a-recipe-repository">these instructions</a>.</p>
     <p class="subtitle" x-text="`Details: ${notSetUp}`"></p>
   </article>
 
@@ -309,7 +309,7 @@
 <footer class="container site-footer"><small>
   Recipes from <a :href="github" x-text="repo">{{repo}}</a>
   <template x-if="repo !== config.repo"><span>· <a href="?">Back to the recipes from <span x-text="config.repo"></span></a></span></template>
-  · served with <a href="https://github.com/schryer/recipe-host">recipe-host</a>
+  · served with <a href="https://github.com/Sustenaut/recipe-host">recipe-host</a>
 </small></footer>
 
 <!-- Every dialog ends in openRequest(): a prefilled GitHub issue that the
