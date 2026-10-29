@@ -11,30 +11,30 @@ permissions:
 jobs:
   test:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-node-test.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
+    uses: Sustenaut/pubkit/.github/workflows/job-node-test.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
     with: {"coverage-report": "coverage/"}
 
   browser:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-node-browser.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
+    uses: Sustenaut/pubkit/.github/workflows/job-node-browser.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
     with: {"browser-test": "npm run test:browser"}
 
   audit:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-node-audit.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
+    uses: Sustenaut/pubkit/.github/workflows/job-node-audit.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
 
   osv:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-osv.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
+    uses: Sustenaut/pubkit/.github/workflows/job-osv.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
 
   review:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-review.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
+    uses: Sustenaut/pubkit/.github/workflows/job-review.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
 
   sonar:
     name: ci
     needs: [test, browser]
-    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
+    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
     with: {"sonar-args": "-Dsonar.tests=test -Dsonar.exclusions=test/**", "reports": "sonar.javascript.lcov.reportPaths=*"}
     secrets: { SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}' }
 
