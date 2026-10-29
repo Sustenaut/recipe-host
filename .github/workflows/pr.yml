@@ -25,7 +25,7 @@ jobs:
 
   osv:
     name: ci
-    uses: schryer/pubkit/.github/workflows/job-osv.yml@v0.12.6
+    uses: schryer/pubkit/.github/workflows/job-osv.yml@v0.14.2
 
   review:
     name: ci
