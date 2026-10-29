@@ -11,30 +11,30 @@ permissions:
 jobs:
   test:
     name: ci
-    uses: schryer/pubkit/.github/workflows/job-node-test.yml@v0.15.2
+    uses: Sustenaut/pubkit/.github/workflows/job-node-test.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
     with: {"coverage-report": "coverage/"}
 
   browser:
     name: ci
-    uses: schryer/pubkit/.github/workflows/job-node-browser.yml@v0.15.2
+    uses: Sustenaut/pubkit/.github/workflows/job-node-browser.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
     with: {"browser-test": "npm run test:browser"}
 
   audit:
     name: ci
-    uses: schryer/pubkit/.github/workflows/job-node-audit.yml@v0.15.2
+    uses: Sustenaut/pubkit/.github/workflows/job-node-audit.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
 
   osv:
     name: ci
-    uses: schryer/pubkit/.github/workflows/job-osv.yml@v0.15.2
+    uses: Sustenaut/pubkit/.github/workflows/job-osv.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
 
   review:
     name: ci
-    uses: schryer/pubkit/.github/workflows/job-review.yml@v0.15.2
+    uses: Sustenaut/pubkit/.github/workflows/job-review.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
 
   sonar:
     name: ci
     needs: [test, browser]
-    uses: schryer/pubkit/.github/workflows/job-sonar.yml@v0.15.2
+    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@44056227327a7af7f344e008fb72106b2eae4eca # v0.16.0
     with: {"sonar-args": "-Dsonar.tests=test -Dsonar.exclusions=test/**", "reports": "sonar.javascript.lcov.reportPaths=*"}
     secrets: { SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}' }
 
@@ -56,7 +56,7 @@ jobs:
   # main, a published version is tagged and released.
   release:
     needs: passed
-    uses: schryer/pubrel/.github/workflows/release.yml@v0.5.4
-    with: {"pubrel-version": "v0.5.4"}
+    uses: Sustenaut/pubrel/.github/workflows/release.yml@16c6c9731b3f41639d45160e8bb73d59d8562e04 # v0.5.5
+    with: {"pubrel-version": "v0.5.5"}
     permissions:
       contents: write
