@@ -11,7 +11,7 @@ permissions:
 jobs:
   test:
     name: ci
-    uses: schryer/pubkit/.github/workflows/job-node-test.yml@v0.12.6
+    uses: schryer/pubkit/.github/workflows/job-node-test.yml@v0.14.2
     with: {"coverage-report": "coverage/"}
 
   browser:
