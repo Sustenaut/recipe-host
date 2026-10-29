@@ -6,8 +6,14 @@
       "coverage-report": "coverage/",
       "sonar-args": "-Dsonar.tests=test -Dsonar.exclusions=test/**"
     },
-    "release": {"pubrel": "0.5.4"}
+    "release": {
+      "pubrel": "0.5.5"
+    }
   },
-  "security": {"sonar": {"args": "-Dsonar.issue.ignore.multicriteria=pubkitpins -Dsonar.issue.ignore.multicriteria.pubkitpins.ruleKey=githubactions:S7637 -Dsonar.issue.ignore.multicriteria.pubkitpins.resourceKey=.github/workflows/*.yml"}},
-  "protect": {"checks": ["ci / passed", "SonarCloud Code Analysis"]}
+  "protect": {
+    "checks": [
+      "ci / passed",
+      "SonarCloud Code Analysis"
+    ]
+  }
 }
