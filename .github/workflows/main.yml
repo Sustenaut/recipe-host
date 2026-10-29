@@ -16,7 +16,7 @@ jobs:
 
   browser:
     name: ci
-    uses: schryer/pubkit/.github/workflows/job-node-browser.yml@v0.12.6
+    uses: schryer/pubkit/.github/workflows/job-node-browser.yml@v0.14.2
     with: {"browser-test": "npm run test:browser"}
 
   audit:
