@@ -9,49 +9,74 @@ permissions:
   contents: read
 
 jobs:
+  # Whether the merge queue already passed this commit: then the jobs
+  # it ran are skipped, and nothing here tests less than the queue did.
+  tested:
+    name: ci
+    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
+    with: {"workflow": ".github/workflows/pr.yml"}
+    permissions:
+      actions: read
+      contents: read
+
   test:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-node-test.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
+    needs: [tested]
+    if: ${{ needs.tested.outputs.tested != 'true' }}
+    uses: Sustenaut/pubkit/.github/workflows/job-node-test.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
     with: {"coverage-report": "coverage/"}
 
   browser:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-node-browser.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
+    needs: [tested]
+    if: ${{ needs.tested.outputs.tested != 'true' }}
+    uses: Sustenaut/pubkit/.github/workflows/job-node-browser.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
     with: {"browser-test": "npm run test:browser"}
 
   audit:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-node-audit.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
+    needs: [tested]
+    if: ${{ needs.tested.outputs.tested != 'true' }}
+    uses: Sustenaut/pubkit/.github/workflows/job-node-audit.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
 
   osv:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-osv.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
+    needs: [tested]
+    if: ${{ needs.tested.outputs.tested != 'true' }}
+    uses: Sustenaut/pubkit/.github/workflows/job-osv.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
 
   sonar:
     name: ci
-    needs: [test, browser]
-    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@f0984614ce18dd9f5eedfb7a39451c2bff89d232 # v0.17.0
-    with: {"sonar-args": "-Dsonar.tests=test -Dsonar.exclusions=test/**", "reports": "sonar.javascript.lcov.reportPaths=*"}
+    needs: [tested, test, browser]
+    if: ${{ !failure() && !cancelled() }}
+    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@7914b2abb933747e303f5f981d8335d3704dcdb3 # v0.21.0
+    permissions:
+      actions: read
+      contents: read
+    with: {"sonar-args": "-Dsonar.tests=test -Dsonar.exclusions=test/**", "reports": "sonar.javascript.lcov.reportPaths=*", "coverage-run": "${{ needs.tested.outputs.run-id }}"}
     secrets: { SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}' }
 
   # The one check a ruleset requires: it passes only when every job
-  # above succeeded. None of them is ever skipped for not being asked for.
+  # above succeeded or, where the merge queue already passed the
+  # commit, was skipped for it. None is skipped for not being asked for.
   passed:
     name: ci / passed
     if: always()
-    needs: [test, browser, audit, osv, sonar]
+    needs: [tested, test, browser, audit, osv, sonar]
     runs-on: ubuntu-latest
     steps:
       - run: |
           echo "$RESULTS"
-          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' > /dev/null
-        env: { RESULTS: '${{ toJSON(needs) }}' }
+          echo "$RESULTS" | jq -e --arg tested "$TESTED" '.tested.result == "success"
+            and all(.[]; .result == "success" or (.result == "skipped" and $tested == "true"))' > /dev/null
+        env: { RESULTS: '${{ toJSON(needs) }}', TESTED: '${{ needs.tested.outputs.tested }}' }
 
   # pubrel's release workflow: on a pull request, a code change records
   # what it changes and a release is the bump its changes require; on
   # main, a published version is tagged and released.
   release:
     needs: passed
+    if: ${{ !cancelled() && needs.passed.result == 'success' }}
     uses: Sustenaut/pubrel/.github/workflows/release.yml@16c6c9731b3f41639d45160e8bb73d59d8562e04 # v0.5.5
     with: {"pubrel-version": "v0.5.5"}
     permissions:
