@@ -7,7 +7,7 @@
       "sonar-args": "-Dsonar.tests=test -Dsonar.exclusions=test/**"
     },
     "release": {
-      "pubrel": "0.5.5"
+      "pubrel": "0.6.1"
     }
   },
   "protect": {
