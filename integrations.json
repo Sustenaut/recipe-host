@@ -1,0 +1,66 @@
+{
+  "uses": [
+    {
+      "plugin": "cloudflare.dns",
+      "paths": [
+        "action.yml"
+      ]
+    },
+    {
+      "plugin": "cloudflare.pages",
+      "paths": [
+        "action.yml"
+      ]
+    },
+    {
+      "plugin": "github.app-token",
+      "paths": [
+        ".github/workflows/main.yml",
+        ".github/workflows/pr.yml"
+      ]
+    },
+    {
+      "plugin": "github.edit-pr",
+      "paths": [
+        "action.yml",
+        "app/app.js"
+      ]
+    },
+    {
+      "plugin": "github.repo-ops",
+      "paths": [
+        "action.yml"
+      ]
+    },
+    {
+      "plugin": "jsdelivr.purge",
+      "paths": [
+        "action.yml",
+        "app/app.js",
+        "app/index.html",
+        "lib/page.js"
+      ]
+    },
+    {
+      "plugin": "sonarcloud.scan",
+      "paths": [
+        ".github/workflows/main.yml",
+        ".github/workflows/pr.yml"
+      ]
+    }
+  ],
+  "own_hosts": [
+    "schryer.eu",
+    "sustenaut.eu"
+  ],
+  "exclude": [
+    {
+      "path": "test/**",
+      "reason": "Fakes and test data"
+    },
+    {
+      "path": "**/*.test.js",
+      "reason": "Fakes and test data"
+    }
+  ]
+}
