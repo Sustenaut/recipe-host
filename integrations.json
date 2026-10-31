@@ -4,33 +4,38 @@
       "plugin": "cloudflare.dns",
       "paths": [
         "action.yml"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "cloudflare.pages",
       "paths": [
         "action.yml"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "github.app-token",
       "paths": [
         ".github/workflows/main.yml",
         ".github/workflows/pr.yml"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "github.edit-pr",
       "paths": [
         "action.yml",
         "app/app.js"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "github.repo-ops",
       "paths": [
         "action.yml"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "jsdelivr.purge",
@@ -39,14 +44,16 @@
         "app/app.js",
         "app/index.html",
         "lib/page.js"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "sonarcloud.scan",
       "paths": [
         ".github/workflows/main.yml",
         ".github/workflows/pr.yml"
-      ]
+      ],
+      "mode": "required"
     }
   ],
   "own_hosts": [
