@@ -1,108 +1,66 @@
 /* recipe-host styles on top of Pure CSS, which gives the base reset, buttons,
-   forms, tables and menus. The colours, fonts and radii are the Sustenaut
-   design tokens (schryer/business-plan, ui/src/theme.css from
-   brand/palette.json), under the same names, so the two stay easy to compare.
-   Dark mode reuses the token names. The fonts are the variable builds of
-   Nunito and Nunito Sans from Fontsource, loaded by index.html. */
+   forms, tables and menus. The colours, fonts, radii and panel shadow are
+   Sustenaut's design tokens from Sustenaut/theme: its tokens.css and fonts.css,
+   which index.html loads before this file. Dark mode sets the same names. */
 
 :root {
   color-scheme: light dark;
-  --ground: #f3efe2; /* cream */
-  --surface: #fffdf6;
-  --sunken: #ede6d4;
-  --ink: #17110c; /* soil */
-  --muted: #5d4d3f;
-  --rule: #ddd4bf;
-  --rule-strong: #c9bea6;
-  --link: #1f6b35; /* canopy */
-  --primary: #1f6b35;
-  --on-primary: #fffdf6;
-  --accent: #5bc236; /* sprout */
-  --accent-soft: #ddf0d2;
-  --warn: #8a5a00;
-  --warn-soft: #f6e6c2; /* seed, softened */
-  --bad: #9b2c1f;
-  --seed: #e8a317; /* amber, for favourite stars */
-  --font-sans: "Nunito Sans Variable", "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Nunito Variable", "Nunito", system-ui, sans-serif;
-  --radius-control: 10px;
-  --radius-panel: 14px;
-  --shadow: 0 8px 28px rgba(23, 17, 12, 0.14);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ground: #17110c;
-    --surface: #221911;
-    --sunken: #2b2017;
-    --ink: #f3efe2;
-    --muted: #b9ab95;
-    --rule: #3a2a1e; /* loam */
-    --rule-strong: #54402f;
-    --link: #a6de58; /* leaf */
-    --primary: #5bc236;
-    --on-primary: #17110c;
-    --accent-soft: #24361a;
-    --warn: #e8a317; /* seed */
-    --warn-soft: #33260f;
-    --bad: #f08a7a;
-    --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
-  }
 }
 [x-cloak] { display: none !important; }
 
 html, button, input, select, textarea, .pure-g [class*="pure-u"] { font-family: var(--font-sans); }
-body { background: var(--ground); color: var(--ink); line-height: 1.55; margin: 0; }
-a { color: var(--link); text-decoration-color: var(--accent); text-underline-offset: 3px; }
+body { background: var(--color-ground); color: var(--color-ink); line-height: 1.55; margin: 0; }
+a { color: var(--color-link); text-decoration-color: var(--color-accent); text-underline-offset: 3px; }
 h1, h2, h3 { font-family: var(--font-display); font-weight: 800; line-height: 1.2; }
 .container { max-width: 62rem; margin: 0 auto; padding: 0 1rem; box-sizing: border-box; }
 
 /* Pure's widgets, styled like @sustenaut/ui's Button, Field and Panel. */
 .pure-button {
   min-height: 2.75rem; padding: 0 1rem; font-weight: 700; border-radius: var(--radius-control);
-  border: 1px solid var(--rule-strong); background: var(--surface); color: var(--ink);
+  border: 1px solid var(--color-rule-strong); background: var(--color-surface); color: var(--color-ink);
 }
 a.pure-button { display: inline-flex; align-items: center; text-decoration: none; }
-.pure-button:hover:not([disabled]) { background-image: none; border-color: var(--primary); }
-.pure-button-primary, a.pure-button-primary, .pure-button-primary:hover:not([disabled]) { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.pure-button:hover:not([disabled]) { background-image: none; border-color: var(--color-primary); }
+.pure-button-primary, a.pure-button-primary, .pure-button-primary:hover:not([disabled]) { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
 .pure-form input[type=search], .pure-form input[type=text], .pure-form input:not([type]), .pure-form textarea {
-  background: var(--surface); color: var(--ink); border: 1px solid var(--rule-strong); box-shadow: none;
+  background: var(--color-surface); color: var(--color-ink); border: 1px solid var(--color-rule-strong); box-shadow: none;
   border-radius: var(--radius-control); padding: 0.6em 0.8em;
 }
-.pure-form input[type]:focus, .pure-form input:focus, .pure-form textarea:focus { border-color: var(--primary); outline: 2px solid var(--accent-soft); }
+.pure-form input[type]:focus, .pure-form input:focus, .pure-form textarea:focus { border-color: var(--color-primary); outline: 2px solid var(--color-accent-soft); }
 .pure-form label { margin: 0.8em 0 0.2em; font-weight: 600; }
-.pure-table { border: 1px solid var(--rule); width: 100%; background: var(--surface); }
-.pure-table thead { background: var(--sunken); color: var(--muted); }
-.pure-table-horizontal td, .pure-table-horizontal th { border-color: var(--rule); vertical-align: top; }
+.pure-table { border: 1px solid var(--color-rule); width: 100%; background: var(--color-surface); }
+.pure-table thead { background: var(--color-sunken); color: var(--color-muted); }
+.pure-table-horizontal td, .pure-table-horizontal th { border-color: var(--color-rule); vertical-align: top; }
 /* Pure colours menu links #777, and a visited selected one #000 with a more
    specific selector, which was unreadable on the dark header; :visited is
    matched here too so neither applies. Links not selected are muted and
    darken on hover; the selected one is green and bold. */
 .pure-menu-heading, .pure-menu-heading:visited { color: inherit; }
-.pure-menu-link, .pure-menu-link:visited { color: var(--muted); font-weight: 600; }
-.pure-menu-link:hover, .pure-menu-link:focus { background: var(--sunken); color: var(--ink); border-radius: var(--radius-control); }
+.pure-menu-link, .pure-menu-link:visited { color: var(--color-muted); font-weight: 600; }
+.pure-menu-link:hover, .pure-menu-link:focus { background: var(--color-sunken); color: var(--color-ink); border-radius: var(--radius-control); }
 .pure-menu-selected > .pure-menu-link, .pure-menu-selected > .pure-menu-link:visited {
-  background: var(--sunken); color: var(--link); font-weight: 700; border-radius: var(--radius-control);
+  background: var(--color-sunken); color: var(--color-link); font-weight: 700; border-radius: var(--radius-control);
 }
 .site-header .pure-menu-heading { display: flex; align-items: center; gap: 0.5rem; font-family: var(--font-display); font-weight: 800; text-transform: none; font-size: 1.2em; text-decoration: none; }
 .logo { width: 2rem; height: 2rem; flex: none; }
 
-.site-header { background: var(--surface); border-bottom: 1px solid var(--rule); }
+.site-header { background: var(--color-surface); border-bottom: 1px solid var(--color-rule); }
 .site-header nav { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 1rem; }
 /* The bell lights up when a newer publish is out; Reload switches to it. */
 .site-header nav .pure-menu-list { margin-left: auto; }
 .updates { display: flex; align-items: center; gap: 0.5rem; padding-left: 0.5rem; }
 .updates svg { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.bell { position: relative; display: inline-flex; padding: 0.4rem; color: var(--rule-strong); }
-.bell.active { color: var(--link); }
-.bell.active::after { content: ""; position: absolute; top: 0.3rem; right: 0.3rem; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
+.bell { position: relative; display: inline-flex; padding: 0.4rem; color: var(--color-rule-strong); }
+.bell.active { color: var(--color-link); }
+.bell.active::after { content: ""; position: absolute; top: 0.3rem; right: 0.3rem; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 2px var(--color-surface); }
 .reload { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.25rem; }
-.update-note { color: var(--muted); font-size: 0.85rem; max-width: 16rem; }
+.update-note { color: var(--color-muted); font-size: 0.85rem; max-width: 16rem; }
 /* Who is signed in, on a site with login. */
 .account { display: flex; align-items: center; gap: 0.5rem; padding-left: 0.5rem; }
-.account .who { color: var(--muted); font-weight: 600; }
+.account .who { color: var(--color-muted); font-weight: 600; }
 .sign-in { max-width: 32rem; margin: 3rem auto; }
-.site-footer { border-top: 1px solid var(--rule); margin-top: 3rem; padding: 1rem; color: var(--muted); }
-.lede, .subtitle, .crumbs, .count, .aliases { color: var(--muted); }
+.site-footer { border-top: 1px solid var(--color-rule); margin-top: 3rem; padding: 1rem; color: var(--color-muted); }
+.lede, .subtitle, .crumbs, .count, .aliases { color: var(--color-muted); }
 .subtitle { font-size: 1.1rem; }
 .recipe .title-row h1 { margin-bottom: 0; }
 .title-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
@@ -110,20 +68,20 @@ a.pure-button { display: inline-flex; align-items: center; text-decoration: none
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.8rem; }
 .card {
   display: flex; flex-direction: column; gap: 0.25rem; padding: 1rem 1.2rem; text-decoration: none; color: inherit;
-  background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-panel);
+  background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: var(--radius-panel);
 }
-.card:hover { border-color: var(--primary); }
+.card:hover { border-color: var(--color-primary); }
 .card strong { font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; }
 .card img { aspect-ratio: 16 / 9; object-fit: cover; width: 100%; border-radius: var(--radius-control); }
-.card span { color: var(--muted); font-size: 0.92rem; }
+.card span { color: var(--color-muted); font-size: 0.92rem; }
 
 /* The ingredient list: the ⋯ button shows on hover or focus, and always on
    touch screens, which cannot hover. */
-.item-list { padding: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-panel); overflow: hidden; }
+.item-list { padding: 0; background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: var(--radius-panel); overflow: hidden; }
 .item-list li { list-style: none; }
-.item-list .row { display: flex; align-items: center; gap: 0.8rem; padding: 0.3rem 0.8rem; border-bottom: 1px solid var(--rule); }
+.item-list .row { display: flex; align-items: center; gap: 0.8rem; padding: 0.3rem 0.8rem; border-bottom: 1px solid var(--color-rule); }
 .item-list li:last-child { border-bottom: none; }
-.item-list .row:hover, .item-list .row:focus-within, .item-list .row.open { background: var(--sunken); }
+.item-list .row:hover, .item-list .row:focus-within, .item-list .row.open { background: var(--color-sunken); }
 .item-list .row > a { flex: 1; text-decoration: none; color: inherit; }
 .dots { padding: 0.1rem 0.6rem; border: none; border-radius: var(--radius-control); background: transparent; color: inherit; font-size: 1.2rem; cursor: pointer; opacity: 0; }
 .row:hover .dots, .row:focus-within .dots, .row.open .dots { opacity: 1; }
@@ -131,55 +89,55 @@ a.pure-button { display: inline-flex; align-items: center; text-decoration: none
 
 /* Favourite stars: an outline until pressed, then filled amber. */
 .star, .favourite { display: inline-flex; align-items: center; gap: 0.4rem; }
-.star { padding: 0.25rem; border: none; border-radius: var(--radius-control); background: transparent; color: var(--rule-strong); cursor: pointer; }
-.star:hover { color: var(--seed); }
+.star { padding: 0.25rem; border: none; border-radius: var(--radius-control); background: transparent; color: var(--color-rule-strong); cursor: pointer; }
+.star:hover { color: var(--color-seed); }
 .star svg, .favourite svg { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
-.star[aria-pressed="true"] svg, .favourite[aria-pressed="true"] svg { color: var(--seed); fill: var(--seed); }
+.star[aria-pressed="true"] svg, .favourite[aria-pressed="true"] svg { color: var(--color-seed); fill: var(--color-seed); }
 
 /* Filter chips above the recipe lists; pressed ones are filled. */
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.6rem 0; }
-.chips > span { min-width: 3.5rem; color: var(--muted); font-weight: 600; font-size: 0.9rem; }
+.chips > span { min-width: 3.5rem; color: var(--color-muted); font-weight: 600; font-size: 0.9rem; }
 .chip {
-  padding: 0.25rem 0.8rem; border: 1px solid var(--rule-strong); border-radius: 999px; background: var(--surface);
-  color: var(--ink); font: inherit; font-size: 0.92rem; cursor: pointer;
+  padding: 0.25rem 0.8rem; border: 1px solid var(--color-rule-strong); border-radius: 999px; background: var(--color-surface);
+  color: var(--color-ink); font: inherit; font-size: 0.92rem; cursor: pointer;
 }
-.chip small { color: var(--muted); }
-.chip:hover { border-color: var(--primary); }
-.chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.chip small { color: var(--color-muted); }
+.chip:hover { border-color: var(--color-primary); }
+.chip[aria-pressed="true"] { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
 .chip[aria-pressed="true"] small { color: inherit; }
-.clear { margin-left: 0.6rem; padding: 0; border: none; background: none; color: var(--link); font: inherit; text-decoration: underline; text-decoration-color: var(--accent); cursor: pointer; }
-.empty { padding: 1rem 1.2rem; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-panel); }
+.clear { margin-left: 0.6rem; padding: 0; border: none; background: none; color: var(--color-link); font: inherit; text-decoration: underline; text-decoration-color: var(--color-accent); cursor: pointer; }
+.empty { padding: 1rem 1.2rem; background: var(--color-surface); border: 1px solid var(--color-rule); border-radius: var(--radius-panel); }
 
 .menu {
-  z-index: 10; width: auto; min-width: 15rem; padding: 0.3rem; background: var(--surface);
-  border: 1px solid var(--rule); border-radius: var(--radius-control); box-shadow: var(--shadow);
+  z-index: 10; width: auto; min-width: 15rem; padding: 0.3rem; background: var(--color-surface);
+  border: 1px solid var(--color-rule); border-radius: var(--radius-control); box-shadow: var(--shadow-panel);
 }
 .menu button.pure-menu-link { width: 100%; text-align: left; border: none; background: none; font: inherit; cursor: pointer; border-radius: var(--radius-control); }
-.menu button.pure-menu-link:hover, .menu button.pure-menu-link:focus { background: var(--sunken); }
+.menu button.pure-menu-link:hover, .menu button.pure-menu-link:focus { background: var(--color-sunken); }
 
 dialog {
-  width: min(34rem, calc(100vw - 2rem)); box-sizing: border-box; padding: 0 1.5rem 1.2rem; background: var(--surface); color: var(--ink);
-  border: 1px solid var(--rule); border-radius: var(--radius-panel); box-shadow: var(--shadow);
+  width: min(34rem, calc(100vw - 2rem)); box-sizing: border-box; padding: 0 1.5rem 1.2rem; background: var(--color-surface); color: var(--color-ink);
+  border: 1px solid var(--color-rule); border-radius: var(--radius-panel); box-shadow: var(--shadow-panel);
 }
 dialog::backdrop { background: rgba(23, 17, 12, 0.45); }
 dialog footer { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.2rem; }
-.picker { max-height: 14rem; overflow: auto; margin: 0.5rem 0; padding: 0; border: 1px solid var(--rule); border-radius: var(--radius-control); }
+.picker { max-height: 14rem; overflow: auto; margin: 0.5rem 0; padding: 0; border: 1px solid var(--color-rule); border-radius: var(--radius-control); }
 .picker li { list-style: none; padding: 0.45rem 0.8rem; cursor: pointer; }
-.picker li:hover { background: var(--sunken); }
-.picker li[aria-selected="true"] { background: var(--primary); color: var(--on-primary); }
+.picker li:hover { background: var(--color-sunken); }
+.picker li[aria-selected="true"] { background: var(--color-primary); color: var(--color-on-primary); }
 .actions { display: flex; gap: 1rem; align-items: center; margin-top: 0.8rem; }
-.error { color: var(--bad); }
+.error { color: var(--color-bad); }
 
-.facts > span + span::before { content: " · "; color: var(--muted); }
+.facts > span + span::before { content: " · "; color: var(--color-muted); }
 .recipe-body { display: grid; grid-template-columns: minmax(14rem, 1fr) 2fr; gap: 2rem; }
 .recipe figure { margin: 1rem 0; }
 .recipe figure img { max-width: 100%; border-radius: var(--radius-panel); }
 .ingredient-link { color: inherit; }
 .steps li { margin-bottom: 0.6rem; }
-.swap { font-size: 0.88rem; color: var(--muted); }
-.swap mark { background: var(--accent-soft); color: var(--link); padding: 0 0.5em; border-radius: 999px; font-weight: 600; }
+.swap { font-size: 0.88rem; color: var(--color-muted); }
+.swap mark { background: var(--color-accent-soft); color: var(--color-link); padding: 0 0.5em; border-radius: 999px; font-weight: 600; }
 /* Like @sustenaut/ui's Callout with the warning tone. */
-.alert { border-left: 4px solid var(--warn); border-radius: var(--radius-control); padding: 0.6rem 0.9rem; margin-bottom: 1rem; background: var(--warn-soft); }
+.alert { border-left: 4px solid var(--color-warn); border-radius: var(--radius-control); padding: 0.6rem 0.9rem; margin-bottom: 1rem; background: var(--color-warn-soft); }
 .alert p { margin: 0.3rem 0; }
 
 @media (max-width: 40rem) {

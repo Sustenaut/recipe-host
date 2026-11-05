@@ -144,7 +144,7 @@ test('the header marks the current section and shows the logo', async () => {
   assert.match(await page.getAttribute('link[rel=icon]', 'href'), /logo\.svg$/);
   // The links not selected are muted, never Pure's grey or its black for a
   // visited selected link.
-  const muted = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--muted').trim());
+  const muted = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--color-muted').trim());
   const rgb = muted.match(/[0-9a-f]{2}/gi).map((h) => parseInt(h, 16));
   for (const a of await page.locator('.pure-menu-item:not(.pure-menu-selected) a').all()) {
     assert.equal(await a.evaluate((el) => getComputedStyle(el).color), `rgb(${rgb.join(', ')})`);
