@@ -28,8 +28,7 @@
   },
   "devDependencies": {
     "@alpinejs/anchor": "^3.17.4",
-    "@fontsource-variable/nunito": "^5.3.0",
-    "@fontsource-variable/nunito-sans": "^5.3.0",
+    "@sustenaut/theme": "github:Sustenaut/theme#v0.1.0",
     "alpinejs": "^3.17.4",
     "oidc-client-ts": "^3.5.0",
     "playwright": "^1.64.1",

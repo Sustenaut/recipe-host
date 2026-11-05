@@ -1,0 +1,4 @@
+{
+  "category": "changed",
+  "change": "The page takes Sustenaut's design tokens and fonts from Sustenaut/theme v0.1.0 (tokens.css and fonts.css on jsDelivr, with their integrity), in place of its own copy of the palette and the two Fontsource stylesheets; style.css uses the theme's names (--color-surface, --shadow-panel, …). The fonts now load Latin and Latin Extended only, and Nunito Sans without its optical-size axis"
+}
