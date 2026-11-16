@@ -107,7 +107,7 @@ Then("an ingredient line splits into quantity, references and preparation", func
   assert.equal(line.quantity, '6 cloves');
   assert.equal(line.preparation, 'minced');
   assert.equal(line.text, '6 cloves garlic, minced');
-})(scenarioContext);
+})();
 });
 
 Then("a recipe parses into facts, ingredient groups and named steps", function () {
@@ -119,7 +119,7 @@ Then("a recipe parses into facts, ingredient groups and named steps", function (
   assert.equal(r.ingredientGroups[0].items.length, 3);
   assert.equal(r.ingredientGroups[0].items[2].preparation, 'with stems, roughly chopped');
   assert.deepEqual(r.steps.map((s) => s.name), ['Char the vegetables', 'Blend']);
-})(scenarioContext);
+})();
 });
 
 Then("a recipe without links, servings or a method reports every problem", function () {
@@ -132,7 +132,7 @@ Then("a recipe without links, servings or a method reports every problem", funct
     assert.match(err.message, /no `## Method`/);
     return true;
   });
-})(scenarioContext);
+})();
 });
 
 Then("a link to an ingredient without a file is an error", function () {
@@ -141,7 +141,7 @@ Then("a link to an ingredient without a file is an error", function () {
   const repo = loadRepo(root);
   assert.equal(repo.errors.length, 2);
   assert.match(repo.errors[0], /links the ingredient "coriander", which has no file/);
-})(scenarioContext);
+})();
 });
 
 Then("an unused ingredient is a warning, not an error", function () {
@@ -149,7 +149,7 @@ Then("an unused ingredient is a warning, not an error", function () {
   const repo = loadRepo(makeRepo());
   assert.deepEqual(repo.errors, []);
   assert.deepEqual(repo.warnings, ['ingredients/jalapeno.md: no recipe uses "Jalapeño" yet', 'ingredients/onion.md: no recipe uses "Onion" yet']);
-})(scenarioContext);
+})();
 });
 
 Then("the index lists each ingredient with the recipes that use it and how", function () {
@@ -161,7 +161,7 @@ Then("the index lists each ingredient with the recipes that use it and how", fun
     ['salsa-verde', null, 'with stems, roughly chopped'],
   ]);
   assert.deepEqual(index.recipes.find((r) => r.slug === 'salsa-verde').ingredients, ['serrano-chilli', 'scallion', 'coriander']);
-})(scenarioContext);
+})();
 });
 
 Then("card data is plain text with the draft note kept", function () {
@@ -172,7 +172,7 @@ Then("card data is plain text with the draft note kept", function () {
   assert.deepEqual(card.intro[0], { kind: 'note', text: 'Draft method for David to check.' });
   assert.equal(card.groups[0].items[0], '2 serrano chillies, stems removed');
   assert.deepEqual(card.notes, ['Keeps for a week.']);
-})(scenarioContext);
+})();
 });
 
 Then("a request is read from the recipe-host block of an issue", function () {
@@ -180,7 +180,7 @@ Then("a request is read from the recipe-host block of an issue", function () {
   assert.equal(readRequest('Just a question'), null);
   assert.deepEqual(readRequest('Text\n\n```recipe-host\n{"action":"add-ingredient","name":"Leek"}\n```\n'), { action: 'add-ingredient', name: 'Leek' });
   assert.throws(() => readRequest('```recipe-host\nnot json\n```'), RequestError);
-})(scenarioContext);
+})();
 });
 
 Then("merging relinks recipes and keeps the old name as an alias", function () {
@@ -194,7 +194,7 @@ Then("merging relinks recipes and keeps the old name as an alias", function () {
   assert.deepEqual(scallion.aliases, ['green onion', 'Spring onion']);
   assert.match(scallion.notes, /### From Spring onion\n\nThe same plant as a scallion\./);
   assert.deepEqual(loadRepo(root).errors, []);
-})(scenarioContext);
+})();
 });
 
 Then("merging moves substitutions that point at the merged ingredient", function () {
@@ -204,7 +204,7 @@ Then("merging moves substitutions that point at the merged ingredient", function
   });
   applyRequest(root, { action: 'merge-ingredients', from: 'jalapeno', into: 'onion' });
   assert.match(read(root, 'ingredients/serrano-chilli.md'), /with: onion/);
-})(scenarioContext);
+})();
 });
 
 Then("an ingredient cannot be merged into itself or a missing one", function () {
@@ -212,7 +212,7 @@ Then("an ingredient cannot be merged into itself or a missing one", function () 
   const root = makeRepo();
   assert.throws(() => applyRequest(root, { action: 'merge-ingredients', from: 'onion', into: 'onion' }), /into itself/);
   assert.throws(() => applyRequest(root, { action: 'merge-ingredients', from: 'onion', into: 'leek' }), /no ingredient "leek"/);
-})(scenarioContext);
+})();
 });
 
 Then("adding an ingredient writes its file and refuses duplicates", function () {
@@ -223,7 +223,7 @@ Then("adding an ingredient writes its file and refuses duplicates", function () 
   const added = parseIngredient('ingredients/roasted-onion.md', read(root, 'ingredients/roasted-onion.md'));
   assert.deepEqual([added.name, added.aliases, added.notes], ['Roasted onion', ['charred onion'], 'Roast at 220 °C.']);
   assert.throws(() => applyRequest(root, { action: 'add-ingredient', name: 'cilantro' }), /already an alias of Coriander/);
-})(scenarioContext);
+})();
 });
 
 Then("a substitution note is stored on the ingredient for the chosen recipes", function () {
@@ -236,7 +236,7 @@ Then("a substitution note is stored on the ingredient for the chosen recipes", f
   assert.equal(result.title, 'Substitute Jalapeño for Serrano chilli');
   const serrano = parseIngredient('ingredients/serrano-chilli.md', read(root, 'ingredients/serrano-chilli.md'));
   assert.deepEqual(serrano.substitutions, [{ with: 'jalapeno', recipes: ['salsa-verde'], note: 'More roasted jalapeños plus a small dose of hotter chilli extract to taste.' }]);
-})(scenarioContext);
+})();
 });
 
 Then("a substitution for a recipe that does not use the ingredient is refused", function () {
@@ -247,7 +247,7 @@ Then("a substitution for a recipe that does not use the ingredient is refused", 
     /"herb-salad", which does not use Serrano chilli/,
   );
   assert.ok(!read(root, 'ingredients/serrano-chilli.md').includes('substitutions'));
-})(scenarioContext);
+})();
 });
 
 Then("link adds ingredient links by name and alias and reports the rest", function () {
@@ -258,7 +258,7 @@ Then("link adds ingredient links by name and alias and reports the rest", functi
   assert.deepEqual(result.linked, ['1 bunch [cilantro](/ingredients/coriander.md), leaves picked', '2 red [onions](/ingredients/onion.md), sliced']);
   assert.deepEqual(result.unmatched, ['1 lemon']);
   assert.match(read(root, 'recipes/salads/herb-salad.md'), /- 1 bunch \[cilantro\]\(\/ingredients\/coriander\.md\), leaves picked/);
-})(scenarioContext);
+})();
 });
 
 Then("a page pinned to one data commit preloads its index and skips asking GitHub", function () {
@@ -271,7 +271,7 @@ Then("a page pinned to one data commit preloads its index and skips asking GitHu
   const latest = pageHtml(config);
   assert.doesNotMatch(latest, /rel="preload"/);
   assert.match(latest, /"data":null/);
-})(scenarioContext);
+})();
 });
 
 Then("a page given its data's hash names it, on the preload too", function () {
@@ -282,7 +282,7 @@ Then("a page given its data's hash names it, on the preload too", function () {
   assert.ok(html.includes(`index.json" as="fetch" crossorigin integrity="${hash}">`));
   assert.ok(html.includes(`"dataIntegrity":"${hash}"`));
   assert.match(pageHtml(config), /"dataIntegrity":null/);
-})(scenarioContext);
+})();
 });
 
 Then("recipe-host page --index names the hash of that index.json in the page", function () {
@@ -295,7 +295,7 @@ Then("recipe-host page --index names the hash of that index.json in the page", f
   const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
   assert.ok(html.includes(`"dataIntegrity":"${sri('{"recipes":[]}')}"`));
   fs.rmSync(dir, { recursive: true, force: true });
-})(scenarioContext);
+})();
 });
 
 Then("the built index holds the integrity of every recipe file, and those files match it", function () {
@@ -307,7 +307,7 @@ Then("the built index holds the integrity of every recipe file, and those files 
   assert.deepEqual(Object.keys(integrity).sort(), repo.recipes.map((r) => `recipes/${r.slug}.json`).sort());
   for (const [file, hash] of Object.entries(integrity)) assert.equal(sri(fs.readFileSync(path.join(out, file))), hash, file);
   fs.rmSync(out, { recursive: true, force: true });
-})(scenarioContext);
+})();
 });
 
 Then("every library the page loads carries the integrity of the file its version ships", function () {
@@ -318,7 +318,7 @@ Then("every library the page loads carries the integrity of the file its version
     const hash = sri(fs.readFileSync(new URL(`../node_modules/${name}/${file}`, import.meta.url)));
     assert.equal(INTEGRITY[key], hash, `INTEGRITY.${key} must be '${hash}', the hash of ${name}@${version}/${file}`);
   }
-})(scenarioContext);
+})();
 });
 
 Then("every script and stylesheet on the page names its integrity, the app itself included", function () {
@@ -331,7 +331,7 @@ Then("every script and stylesheet on the page names its integrity, the app itsel
   assert.ok(page.includes(`app.js" integrity="${app}"`));
   const style = sri(fs.readFileSync(new URL('../app/style.css', import.meta.url)));
   assert.ok(page.includes(`style.css" integrity="${style}"`));
-})(scenarioContext);
+})();
 });
 
 Then("a site with login loads the sign-in library and passes its settings to the page", function () {
@@ -345,7 +345,7 @@ Then("a site with login loads the sign-in library and passes its settings to the
   const open = pageHtml({ ...config, login: null, favourites: null });
   assert.doesNotMatch(open, /oidc-client-ts/);
   assert.match(open, /"login":null,"favourites":null/);
-})(scenarioContext);
+})();
 });
 
 Then("login settings in recipe-host.yml are read and checked", function () {
@@ -362,7 +362,7 @@ Then("login settings in recipe-host.yml are read and checked", function () {
   assert.match(bad.errors[2], /favourites must be the https:\/\/ address/);
   const alone = loadRepo(makeRepo({ 'recipe-host.yml': 'favourites: https://presign.sustenaut.eu/\n' }));
   assert.match(alone.errors[0], /favourites needs login/);
-})(scenarioContext);
+})();
 });
 
 Then("a session service for sign-in is read and checked", function () {
@@ -378,7 +378,7 @@ Then("a session service for sign-in is read and checked", function () {
   const page = pageHtml({ title: 'R', description: '', repo: 'o/r', branch: 'main', login: good.config.login, favourites: null });
   assert.doesNotMatch(page, /oidc-client-ts/);
   assert.match(page, /"login":\{"session":"https:\/\/share.schryer.eu\/recipes\/v1\/","required":true\}/);
-})(scenarioContext);
+})();
 });
 
 
@@ -399,7 +399,7 @@ Then("the page carries an Open Graph card for link previews, with the site's own
   assert.match(ownPage, /<meta property="og:image" content="https:\/\/recipes.example\/card.jpg">/);
   assert.doesNotMatch(ownPage, /og:image:width|og:url/);
   assert.match(loadRepo(makeRepo({ 'recipe-host.yml': 'image: photos/card.jpg\n' })).errors[0], /image must be the https:\/\/ address/);
-})(scenarioContext);
+})();
 });
 
 Then("typst is found by absolute path, from $TYPST or else PATH, and never from a relative PATH entry", function () {
@@ -413,7 +413,7 @@ Then("typst is found by absolute path, from $TYPST or else PATH, and never from 
   assert.equal(typstPath({ TYPST: 'typst', PATH: dir }), null);
   assert.equal(typstPath({ PATH: 'relative' }), null);
   fs.rmSync(dir, { recursive: true, force: true });
-})(scenarioContext);
+})();
 });
 
 Then("the Markdown patterns keep their meaning and stay fast on hostile text", function () {
@@ -434,5 +434,5 @@ Then("the Markdown patterns keep their meaning and stay fast on hostile text", f
   splitSections(`## ${'#'.repeat(20000)}x`);
   assert.throws(() => readRequest('```recipe-host\n'.repeat(5000)), RequestError);
   assert.ok(Date.now() - started < 1000, 'the patterns took over a second on long input');
-})(scenarioContext);
+})();
 });

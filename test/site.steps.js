@@ -59,7 +59,7 @@ BeforeAll(function () {
       return go(...args);
     };
   }
-})(scenarioContext);
+})();
 });
 
 AfterAll(function () {
@@ -70,7 +70,7 @@ AfterAll(function () {
   fs.writeFileSync('coverage/browser.lcov.info', v8ToLcov(app, 'app/app.js'));
   await browser?.close();
   server?.close();
-})(scenarioContext);
+})();
 });
 
 // A fresh load each time: going to the same URL with only the hash changed
@@ -118,7 +118,7 @@ Then("the recipe list searches ingredients and filters by type and meal", functi
   assert.equal(await page.textContent('.chip:has-text("Dinner") small'), '0');
   await page.click('text=Clear filters');
   await eventually(titles, ['Herb salad', 'Salsa verde']);
-})(scenarioContext);
+})();
 });
 
 Then("the front page shows the favourites starred on the list, kept per repository", function () {
@@ -148,7 +148,7 @@ Then("the front page shows the favourites starred on the list, kept per reposito
   // One key, named for the repository, so a ?repo= page keeps its own.
   assert.equal(await page.evaluate(() => localStorage.length), 1);
   await page.evaluate(() => localStorage.clear());
-})(scenarioContext);
+})();
 });
 
 Then("the header marks the current section and shows the logo", function () {
@@ -169,7 +169,7 @@ Then("the header marks the current section and shows the logo", function () {
   for (const a of await page.locator('.pure-menu-item:not(.pure-menu-selected) a').all()) {
     assert.equal(await a.evaluate((el) => getComputedStyle(el).color), `rgb(${rgb.join(', ')})`);
   }
-})(scenarioContext);
+})();
 });
 
 Then("a recipe shows its facts, linked ingredients, swaps and notes", function () {
@@ -181,14 +181,14 @@ Then("a recipe shows its facts, linked ingredients, swaps and notes", function (
   assert.equal(await page.getAttribute('a.ingredient-link >> text=scallions', 'href'), '#/ingredient/scallion');
   assert.match(await page.textContent('.swap'), /Swap Jalapeño: Use more roasted jalapeños\./);
   assert.equal(await page.getAttribute('a >> text=herb salad', 'href'), '#/recipe/herb-salad');
-})(scenarioContext);
+})();
 });
 
 Then("an unknown recipe says so", function () {
   return (async () => {
   await visit('#/recipe/nope', 'main h1:visible');
   assert.equal(await page.textContent('main h1:visible'), 'Not found');
-})(scenarioContext);
+})();
 });
 
 Then("the ingredient list filters, and its menu requests a merge", function () {
@@ -205,7 +205,7 @@ Then("the ingredient list filters, and its menu requests a merge", function () {
   await page.click('dialog[open] .picker li:has-text("Scallion")');
   const request = await requestFrom(() => page.click('dialog[open] >> text=Request merge on GitHub'));
   assert.deepEqual(request, { action: 'merge-ingredients', from: 'spring-onion', into: 'scallion' });
-})(scenarioContext);
+})();
 });
 
 Then("the menu closes on an outside click and on Escape", function () {
@@ -219,7 +219,7 @@ Then("the menu closes on an outside click and on Escape", function () {
   await page.locator('.menu').waitFor();
   await page.keyboard.press('Escape');
   await page.locator('.menu').waitFor({ state: 'hidden' });
-})(scenarioContext);
+})();
 });
 
 Then("the menu opens below its button, or above it near the bottom of the window", function () {
@@ -255,7 +255,7 @@ Then("adding an ingredient refuses a name already on the list", function () {
   await page.fill('dialog[open] input >> nth=0', 'Roasted onion');
   const request = await requestFrom(() => page.click('dialog[open] button[type=submit]'));
   assert.deepEqual(request, { action: 'add-ingredient', name: 'Roasted onion', aliases: [], notes: '' });
-})(scenarioContext);
+})();
 });
 
 Then("an ingredient page lists its uses and requests a substitution for the ticked recipes", function () {
@@ -273,7 +273,7 @@ Then("an ingredient page lists its uses and requests a substitution for the tick
   await page.fill('dialog[open] textarea', 'Use the same weight of roasted onions.');
   const request = await requestFrom(() => page.click('dialog[open] >> text=Request on GitHub'));
   assert.deepEqual(request, { action: 'add-substitution', ingredient: 'coriander', recipes: ['herb-salad'], with: 'onion', note: 'Use the same weight of roasted onions.' });
-})(scenarioContext);
+})();
 });
 
 // A repository's published data, served the way GitHub and jsDelivr would:
@@ -309,7 +309,7 @@ Then("?repo= shows another repository and sends its requests there", function ()
   const request = await requestFrom(() => page.click('dialog[open] >> text=Request on GitHub'), 'friend/cookbook');
   assert.equal(request.action, 'add-substitution');
   await page.unrouteAll();
-})(scenarioContext);
+})();
 });
 
 Then("?repo= naming a repository with nothing published says how to set it up", function () {
@@ -325,7 +325,7 @@ Then("?repo= naming a repository with nothing published says how to set it up", 
   assert.equal(await page.isVisible('article:has-text("Something went wrong")'), false);
   await page.unrouteAll();
   errors.splice(before); // the browser logs the 404s themselves
-})(scenarioContext);
+})();
 });
 
 // The same fixture on a second origin, signing in through the mock
@@ -427,7 +427,7 @@ Then("a site with login asks readers to sign in and keeps their favourites in th
     await page.goto('about:blank');
     loginServer.close();
   }
-})(scenarioContext);
+})();
 });
 
 // Signing in through a session service on the same site, like
@@ -480,7 +480,7 @@ Then("a site with a session service signs readers in there and keeps their favou
   } finally {
     sessionServer.close();
   }
-})(scenarioContext);
+})();
 });
 
 Then("a pinned page lights the bell when a newer publish is out, and reloads into it", function () {
@@ -517,7 +517,7 @@ Then("a pinned page lights the bell when a newer publish is out, and reloads int
   await eventually(() => page.isVisible('.reload'), false);
   await page.waitForSelector('.steps li');
   await page.unrouteAll();
-})(scenarioContext);
+})();
 });
 
 // A publish at `sha` served byte for byte, as jsDelivr would: its
@@ -570,7 +570,7 @@ Then("a page that names its data's hash refuses data that is not what was publis
   assert.equal(await page.isVisible('.row'), false);
   await page.unrouteAll();
   forgetRefusals();
-})(scenarioContext);
+})();
 });
 
 Then("a page that names its data's hash reloads only into data its host names", function () {
@@ -617,7 +617,7 @@ Then("a page that names its data's hash reloads only into data its host names", 
   await page.waitForSelector('.steps li');
   assert.equal(await page.isVisible('.update-note'), false);
   await page.unrouteAll();  forgetRefusals();
-})(scenarioContext);
+})();
 });
 
 Then("a newer publish that changes the page itself reloads the page", function () {
@@ -649,18 +649,18 @@ Then("a newer publish that changes the page itself reloads the page", function (
   assert.equal(await page.textContent('.pure-menu-heading span'), 'New checked recipes');
   await page.unrouteAll();
   forgetRefusals();
-})(scenarioContext);
+})();
 });
 
 Then("a page that reads the newest commit has no bell", function () {
   return (async () => {
   await visit('#/recipes', '.row');
   assert.equal(await page.isVisible('.bell'), false);
-})(scenarioContext);
+})();
 });
 
 Then("no page logged an error", function () {
   return (() => {
   assert.deepEqual(errors, []);
-})(scenarioContext);
+})();
 });

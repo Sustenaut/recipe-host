@@ -32,11 +32,11 @@ BeforeAll(function () {
   }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   base = `http://localhost:${server.address().port}`;
-})(scenarioContext);
+})();
 });
 
 AfterAll(function () {
-  return (() => server.close())(scenarioContext);
+  return (() => server.close())();
 });
 
 const issuer = () => `${base}/mock/auth/realms/sustenaut`;
@@ -76,7 +76,7 @@ Then("discovery and keys describe the realm", function () {
   assert.deepEqual(meta.code_challenge_methods_supported, ['S256']);
   const { keys } = await (await fetch(meta.jwks_uri)).json();
   assert.equal(keys[0].alg, 'RS256');
-})(scenarioContext);
+})();
 });
 
 Then("the sign-in page offers the test accounts, and comes back with a code and the state", function () {
@@ -90,7 +90,7 @@ Then("the sign-in page offers the test accounts, and comes back with a code and 
   assert.equal(back.searchParams.get('state'), 's1');
   assert.equal(back.searchParams.get('iss'), issuer());
   assert.ok(back.searchParams.get('code'));
-})(scenarioContext);
+})();
 });
 
 Then("a code becomes tokens for the account, once", function () {
@@ -106,7 +106,7 @@ Then("a code becomes tokens for the account, once", function () {
   assert.equal((await again.json()).error, 'invalid_grant');
   const user = await (await fetch(oidc('userinfo'), { headers: { authorization: `Bearer ${body.access_token}` } })).json();
   assert.equal(user.name, 'Ben Tester');
-})(scenarioContext);
+})();
 });
 
 Then("the token exchange refuses a wrong verifier, client or redirect", function () {
@@ -118,7 +118,7 @@ Then("the token exchange refuses a wrong verifier, client or redirect", function
   }
   const { body } = await tokens({ grant_type: 'password' });
   assert.equal(body.error, 'unsupported_grant_type');
-})(scenarioContext);
+})();
 });
 
 Then("a refresh token gives new tokens once, to its own client", function () {
@@ -131,7 +131,7 @@ Then("a refresh token gives new tokens once, to its own client", function () {
   assert.ok((await res.json()).access_token);
   const replay = await fetch(oidc('token'), form({ grant_type: 'refresh_token', client_id: 'recipes', refresh_token: second.refresh_token }));
   assert.equal(replay.status, 400);
-})(scenarioContext);
+})();
 });
 
 Then("the sign-in refuses unknown clients, foreign redirects and flows without PKCE", function () {
@@ -145,7 +145,7 @@ Then("the sign-in refuses unknown clients, foreign redirects and flows without P
   assert.equal(new URL(cancel.headers.get('location')).searchParams.get('error'), 'access_denied');
   assert.equal((await fetch(oidc('auth'), form({ ...authParams(), account: '9' }))).status, 400);
   assert.equal((await fetch(oidc('userinfo'), { headers: { authorization: 'Bearer nonsense' } })).status, 401);
-})(scenarioContext);
+})();
 });
 
 Then("logout returns to an allowed address, named by client or by the ID token", function () {
@@ -157,7 +157,7 @@ Then("logout returns to an allowed address, named by client or by the ID token",
   const byClient = await out({ client_id: 'other', post_logout_redirect_uri: 'http://app.test/other/' });
   assert.equal(byClient.headers.get('location'), 'http://app.test/other/');
   assert.equal((await out({ client_id: 'recipes', post_logout_redirect_uri: 'http://evil.test/' })).status, 200);
-})(scenarioContext);
+})();
 });
 
 Then("a presigned link reads and writes only the account’s own file in its app’s folder", function () {
@@ -176,7 +176,7 @@ Then("a presigned link reads and writes only the account’s own file in its app
   clock += 6 * 60 * 1000;
   assert.equal((await fetch(get.body.url)).status, 403);
   clock -= 6 * 60 * 1000;
-})(scenarioContext);
+})();
 });
 
 Then("the favourites service refuses missing tokens, other apps, bad methods and keys", function () {
@@ -189,7 +189,7 @@ Then("the favourites service refuses missing tokens, other apps, bad methods and
   }
   const res = await fetch(`${base}/mock/presign/v1/presign`, { method: 'POST', headers: { authorization: `Bearer ${body.access_token}` }, body: 'not json' });
   assert.equal(res.status, 400);
-})(scenarioContext);
+})();
 });
 
 Then("the mock answers only its own paths, preflights, and oversized bodies", function () {
@@ -203,7 +203,7 @@ Then("the mock answers only its own paths, preflights, and oversized bodies", fu
   assert.match(pre.headers.get('access-control-allow-headers'), /authorization/);
   const big = await fetch(oidc('token'), form({ grant_type: 'x'.repeat(300 * 1024) }));
   assert.equal(big.status, 413);
-})(scenarioContext);
+})();
 });
 
 Then("the preview page settings point at the mock", function () {
@@ -213,7 +213,7 @@ Then("the preview page settings point at the mock", function () {
     login: { issuer: '/mock/auth/realms/sustenaut', client: 'recipes', required: true },
     favourites: '/mock/presign/',
   });
-})(scenarioContext);
+})();
 });
 
 // Signs in to the session service as a test account; returns the cookie.
@@ -239,7 +239,7 @@ Then("the session service signs in, says who, and signs out, back to the page", 
   const cancel = await fetch(`${base}/mock/session/sign-in?rd=${encodeURIComponent('http://evil.test/')}`, form({ cancel: '1' }));
   assert.equal(cancel.headers.get('location'), `${base}/`);
   assert.equal(cancel.headers.get('set-cookie'), null);
-})(scenarioContext);
+})();
 });
 
 Then("the session service keeps each account its own favourites", function () {
@@ -259,5 +259,5 @@ Then("the session service keeps each account its own favourites", function () {
   assert.equal((await put(anna, 'not json')).status, 400);
   assert.equal((await fetch(`${base}/mock/session/favourites/../b.json`, { headers: { cookie: anna } })).status, 404);
   assert.equal((await put(anna, JSON.stringify({ x: 'y'.repeat(70 * 1024) }))).status, 413);
-})(scenarioContext);
+})();
 });

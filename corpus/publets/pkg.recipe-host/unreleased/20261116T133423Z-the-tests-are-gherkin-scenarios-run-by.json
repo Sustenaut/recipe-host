@@ -1,0 +1,4 @@
+{
+  "category": "internal",
+  "change": "The tests are Gherkin scenarios, run by cucumber-js (and c8 for coverage); no change to the package itself"
+}
