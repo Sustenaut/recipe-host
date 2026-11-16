@@ -1,0 +1,10 @@
+{
+  "default": {
+    "paths": ["test/features/*.feature"],
+    "import": ["test/features/support.js", "test/mock-login.steps.js", "test/recipe-host.steps.js"]
+  },
+  "browser": {
+    "paths": ["test/browser-features/*.feature"],
+    "import": ["test/features/support.js", "test/site.steps.js"]
+  }
+}

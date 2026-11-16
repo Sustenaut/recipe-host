@@ -7,8 +7,8 @@
     "test": "test"
   },
   "scripts": {
-    "test": "mkdir -p coverage && node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info test/*.test.js",
-    "test:browser": "node --test --test-concurrency=1 test/*.browser.js"
+    "test": "c8 --reporter=lcov --reporter=text-summary --reports-dir=coverage --include='lib/**' --include='bin/**' cucumber-js",
+    "test:browser": "cucumber-js --profile browser"
   },
   "license": "MIT",
   "dependencies": {
@@ -28,10 +28,16 @@
   },
   "devDependencies": {
     "@alpinejs/anchor": "^3.17.4",
+    "@cucumber/cucumber": "13.3.0",
     "@sustenaut/theme": "github:Sustenaut/theme#v0.1.0",
     "alpinejs": "^3.17.4",
+    "c8": "12.0.0",
     "oidc-client-ts": "^3.5.0",
     "playwright": "^1.64.1",
     "purecss": "^3.1.0"
+  },
+  "overrides": {
+    "glob": "14.0.6",
+    "minimatch": "11.0.8"
   }
 }
