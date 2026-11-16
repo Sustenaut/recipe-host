@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, before, test } from 'node:test';
+import { After, AfterAll, BeforeAll, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import { chromium } from 'playwright';
 import { buildSite } from '../lib/build.js';
 import { pageHtml, sri } from '../lib/page.js';
@@ -15,6 +16,16 @@ import { loadConfig } from '../lib/repo.js';
 import { LOCAL_PAGE, serve } from '../lib/serve.js';
 import { MOCK_ACCOUNTS, mockLogin, mockPageSettings } from '../lib/mock-login.js';
 import { v8ToLcov } from './v8-lcov.js';
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@site", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 const FIXTURE = new URL('./fixtures/repo', import.meta.url).pathname;
 
@@ -26,7 +37,8 @@ let out;
 const errors = [];
 const loads = [];
 
-before(async () => {
+BeforeAll(function () {
+  return (async () => {
   out = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-site-'));
   const repo = buildSite(FIXTURE, out, { cards: false, page: LOCAL_PAGE, log: () => {} });
   assert.deepEqual(repo.errors, []);
@@ -47,15 +59,18 @@ before(async () => {
       return go(...args);
     };
   }
+})(scenarioContext);
 });
 
-after(async () => {
+AfterAll(function () {
+  return (async () => {
   loads.push(...await page.coverage.stopJSCoverage());
   const app = loads.filter((e) => e.url.endsWith('/engine/app/app.js'));
   fs.mkdirSync('coverage', { recursive: true });
   fs.writeFileSync('coverage/browser.lcov.info', v8ToLcov(app, 'app/app.js'));
   await browser?.close();
   server?.close();
+})(scenarioContext);
 });
 
 // A fresh load each time: going to the same URL with only the hash changed
@@ -83,7 +98,8 @@ async function requestFrom(click, repo = 'example/recipes') {
   return JSON.parse(url.searchParams.get('body').match(/```recipe-host\n(.*)\n```/)[1]);
 }
 
-test('the recipe list searches ingredients and filters by type and meal', async () => {
+Then("the recipe list searches ingredients and filters by type and meal", function () {
+  return (async () => {
   await visit('#/recipes', '.row');
   const titles = () => page.locator('.row a span').allTextContents();
   assert.deepEqual(await titles(), ['Herb salad', 'Salsa verde']);
@@ -102,9 +118,11 @@ test('the recipe list searches ingredients and filters by type and meal', async 
   assert.equal(await page.textContent('.chip:has-text("Dinner") small'), '0');
   await page.click('text=Clear filters');
   await eventually(titles, ['Herb salad', 'Salsa verde']);
+})(scenarioContext);
 });
 
-test('the front page shows the favourites starred on the list, kept per repository', async () => {
+Then("the front page shows the favourites starred on the list, kept per repository", function () {
+  return (async () => {
   await visit('#/', '.empty');
   assert.match(await page.textContent('.empty'), /No favourites yet/);
   await page.click('.empty >> text=Browse all recipes');
@@ -130,9 +148,11 @@ test('the front page shows the favourites starred on the list, kept per reposito
   // One key, named for the repository, so a ?repo= page keeps its own.
   assert.equal(await page.evaluate(() => localStorage.length), 1);
   await page.evaluate(() => localStorage.clear());
+})(scenarioContext);
 });
 
-test('the header marks the current section and shows the logo', async () => {
+Then("the header marks the current section and shows the logo", function () {
+  return (async () => {
   const selected = () => page.locator('.pure-menu-selected').textContent();
   await visit('#/', 'main h1:visible');
   assert.equal(await selected(), 'Home');
@@ -149,9 +169,11 @@ test('the header marks the current section and shows the logo', async () => {
   for (const a of await page.locator('.pure-menu-item:not(.pure-menu-selected) a').all()) {
     assert.equal(await a.evaluate((el) => getComputedStyle(el).color), `rgb(${rgb.join(', ')})`);
   }
+})(scenarioContext);
 });
 
-test('a recipe shows its facts, linked ingredients, swaps and notes', async () => {
+Then("a recipe shows its facts, linked ingredients, swaps and notes", function () {
+  return (async () => {
   await visit('#/recipe/salsa-verde', '.steps li');
   assert.equal(await page.title(), 'Salsa verde · Test recipes');
   assert.match(await page.textContent('.facts'), /Makes about 500 ml.*Prep 10 min.*Adapted from example\.com/s);
@@ -159,14 +181,18 @@ test('a recipe shows its facts, linked ingredients, swaps and notes', async () =
   assert.equal(await page.getAttribute('a.ingredient-link >> text=scallions', 'href'), '#/ingredient/scallion');
   assert.match(await page.textContent('.swap'), /Swap Jalapeño: Use more roasted jalapeños\./);
   assert.equal(await page.getAttribute('a >> text=herb salad', 'href'), '#/recipe/herb-salad');
+})(scenarioContext);
 });
 
-test('an unknown recipe says so', async () => {
+Then("an unknown recipe says so", function () {
+  return (async () => {
   await visit('#/recipe/nope', 'main h1:visible');
   assert.equal(await page.textContent('main h1:visible'), 'Not found');
+})(scenarioContext);
 });
 
-test('the ingredient list filters, and its menu requests a merge', async () => {
+Then("the ingredient list filters, and its menu requests a merge", function () {
+  return (async () => {
   await visit('#/ingredients', '.row');
   await page.fill('input[type=search]', 'onion');
   await eventually(() => page.locator('.row a span').allTextContents(), ['Onion', 'Scallion', 'Spring onion']);
@@ -179,9 +205,11 @@ test('the ingredient list filters, and its menu requests a merge', async () => {
   await page.click('dialog[open] .picker li:has-text("Scallion")');
   const request = await requestFrom(() => page.click('dialog[open] >> text=Request merge on GitHub'));
   assert.deepEqual(request, { action: 'merge-ingredients', from: 'spring-onion', into: 'scallion' });
+})(scenarioContext);
 });
 
-test('the menu closes on an outside click and on Escape', async () => {
+Then("the menu closes on an outside click and on Escape", function () {
+  return (async () => {
   await visit('#/ingredients', '.row');
   await page.click('.row:has-text("Basil") .dots');
   await page.locator('.menu').waitFor();
@@ -191,9 +219,11 @@ test('the menu closes on an outside click and on Escape', async () => {
   await page.locator('.menu').waitFor();
   await page.keyboard.press('Escape');
   await page.locator('.menu').waitFor({ state: 'hidden' });
+})(scenarioContext);
 });
 
-test('the menu opens below its button, or above it near the bottom of the window', async (t) => {
+Then("the menu opens below its button, or above it near the bottom of the window", function () {
+  return (async (t) => {
   await page.setViewportSize({ width: 1000, height: 500 });
   t.after(() => page.setViewportSize({ width: 1000, height: 800 }));
   await visit('#/ingredients', '.row');
@@ -212,9 +242,11 @@ test('the menu opens below its button, or above it near the bottom of the window
   const row = page.locator('.row').last();
   await row.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().bottom - window.innerHeight + 4));
   assert.equal(await place(row), 'above');
+})(scenarioContext);
 });
 
-test('adding an ingredient refuses a name already on the list', async () => {
+Then("adding an ingredient refuses a name already on the list", function () {
+  return (async () => {
   await visit('#/ingredients', '.row');
   await page.click('text=Add ingredient');
   await page.fill('dialog[open] input >> nth=0', 'cilantro');
@@ -223,9 +255,11 @@ test('adding an ingredient refuses a name already on the list', async () => {
   await page.fill('dialog[open] input >> nth=0', 'Roasted onion');
   const request = await requestFrom(() => page.click('dialog[open] button[type=submit]'));
   assert.deepEqual(request, { action: 'add-ingredient', name: 'Roasted onion', aliases: [], notes: '' });
+})(scenarioContext);
 });
 
-test('an ingredient page lists its uses and requests a substitution for the ticked recipes', async () => {
+Then("an ingredient page lists its uses and requests a substitution for the ticked recipes", function () {
+  return (async () => {
   await visit('#/ingredient/coriander', 'table');
   assert.deepEqual(await page.locator('tbody tr td:nth-child(2)').allTextContents(), ['Herb salad', 'Salsa verde']);
   assert.match(await page.locator('tbody tr').first().locator('td').nth(2).textContent(), /For the salad: 1 bunch coriander, leaves picked/);
@@ -239,6 +273,7 @@ test('an ingredient page lists its uses and requests a substitution for the tick
   await page.fill('dialog[open] textarea', 'Use the same weight of roasted onions.');
   const request = await requestFrom(() => page.click('dialog[open] >> text=Request on GitHub'));
   assert.deepEqual(request, { action: 'add-substitution', ingredient: 'coriander', recipes: ['herb-salad'], with: 'onion', note: 'Use the same weight of roasted onions.' });
+})(scenarioContext);
 });
 
 // A repository's published data, served the way GitHub and jsDelivr would:
@@ -255,7 +290,8 @@ async function publish(repoName, title, sha = 'a'.repeat(40), latest = sha) {
   });
 }
 
-test('?repo= shows another repository and sends its requests there', async () => {
+Then("?repo= shows another repository and sends its requests there", function () {
+  return (async () => {
   await publish('friend/cookbook', "Friend's cookbook");
   await visit('?repo=friend/cookbook#/recipe/salsa-verde', '.steps li');
   assert.equal(await page.textContent('.pure-menu-heading span'), "Friend's cookbook");
@@ -273,9 +309,11 @@ test('?repo= shows another repository and sends its requests there', async () =>
   const request = await requestFrom(() => page.click('dialog[open] >> text=Request on GitHub'), 'friend/cookbook');
   assert.equal(request.action, 'add-substitution');
   await page.unrouteAll();
+})(scenarioContext);
 });
 
-test('?repo= naming a repository with nothing published says how to set it up', async () => {
+Then("?repo= naming a repository with nothing published says how to set it up", function () {
+  return (async () => {
   const before = errors.length;
   await page.route('https://api.github.com/**', (route) => route.fulfill({ status: 404, body: '' }));
   await page.route('https://cdn.jsdelivr.net/gh/**', (route) => route.fulfill({ status: 404, body: '' }));
@@ -287,11 +325,13 @@ test('?repo= naming a repository with nothing published says how to set it up', 
   assert.equal(await page.isVisible('article:has-text("Something went wrong")'), false);
   await page.unrouteAll();
   errors.splice(before); // the browser logs the 404s themselves
+})(scenarioContext);
 });
 
 // The same fixture on a second origin, signing in through the mock
 // Sustenaut sign-in and keeping favourites in the mock bucket.
-test('a site with login asks readers to sign in and keeps their favourites in their bucket', async () => {
+Then("a site with login asks readers to sign in and keeps their favourites in their bucket", function () {
+  return (async () => {
   const loginOut = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-login-'));
   buildSite(FIXTURE, loginOut, { cards: false, page: { ...LOCAL_PAGE, ...mockPageSettings('openid') }, log: () => {} });
   const mock = mockLogin();
@@ -387,11 +427,13 @@ test('a site with login asks readers to sign in and keeps their favourites in th
     await page.goto('about:blank');
     loginServer.close();
   }
+})(scenarioContext);
 });
 
 // Signing in through a session service on the same site, like
 // share.schryer.eu: its own cookie, and favourites it keeps itself.
-test('a site with a session service signs readers in there and keeps their favourites there', async () => {
+Then("a site with a session service signs readers in there and keeps their favourites there", function () {
+  return (async () => {
   const sessionOut = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-session-'));
   buildSite(FIXTURE, sessionOut, { cards: false, page: { ...LOCAL_PAGE, ...mockPageSettings('session') }, log: () => {} });
   const mock = mockLogin();
@@ -438,9 +480,11 @@ test('a site with a session service signs readers in there and keeps their favou
   } finally {
     sessionServer.close();
   }
+})(scenarioContext);
 });
 
-test('a pinned page lights the bell when a newer publish is out, and reloads into it', async () => {
+Then("a pinned page lights the bell when a newer publish is out, and reloads into it", function () {
+  return (async () => {
   const [old, newer] = ['a'.repeat(40), 'b'.repeat(40)];
   const pinned = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${old}/` });
   fs.writeFileSync(path.join(out, 'pinned.html'), pinned);
@@ -473,6 +517,7 @@ test('a pinned page lights the bell when a newer publish is out, and reloads int
   await eventually(() => page.isVisible('.reload'), false);
   await page.waitForSelector('.steps li');
   await page.unrouteAll();
+})(scenarioContext);
 });
 
 // A publish at `sha` served byte for byte, as jsDelivr would: its
@@ -502,7 +547,8 @@ function deployChecked(sha, dataIntegrity) {
   fs.writeFileSync(path.join(out, 'checked.html'), html);
 }
 
-test('a page that names its data\'s hash refuses data that is not what was published', async () => {
+Then("a page that names its data's hash refuses data that is not what was published", function () {
+  return (async () => {
   const sha = 'c'.repeat(40);
   const integrity = await publishExactly(sha, 'Checked recipes', { 'recipes/herb-salad.json': (body) => body.replace('Herb salad', 'Weed salad') });
   // The page checks for a newer publish on opening; there is none.
@@ -524,9 +570,11 @@ test('a page that names its data\'s hash refuses data that is not what was publi
   assert.equal(await page.isVisible('.row'), false);
   await page.unrouteAll();
   forgetRefusals();
+})(scenarioContext);
 });
 
-test('a page that names its data\'s hash reloads only into data its host names', async () => {
+Then("a page that names its data's hash reloads only into data its host names", function () {
+  return (async () => {
   const [old, newer] = ['d'.repeat(40), 'e'.repeat(40)];
   deployChecked(old, await publishExactly(old, 'Old checked recipes'));
   const newIntegrity = await publishExactly(newer, 'New checked recipes');
@@ -569,9 +617,11 @@ test('a page that names its data\'s hash reloads only into data its host names',
   await page.waitForSelector('.steps li');
   assert.equal(await page.isVisible('.update-note'), false);
   await page.unrouteAll();  forgetRefusals();
+})(scenarioContext);
 });
 
-test('a newer publish that changes the page itself reloads the page', async () => {
+Then("a newer publish that changes the page itself reloads the page", function () {
+  return (async () => {
   const [old, newer] = ['f'.repeat(40), '1'.repeat(40)];
   deployChecked(old, await publishExactly(old, 'Old checked recipes'));
   const newIntegrity = await publishExactly(newer, 'New checked recipes');
@@ -599,13 +649,18 @@ test('a newer publish that changes the page itself reloads the page', async () =
   assert.equal(await page.textContent('.pure-menu-heading span'), 'New checked recipes');
   await page.unrouteAll();
   forgetRefusals();
+})(scenarioContext);
 });
 
-test('a page that reads the newest commit has no bell', async () => {
+Then("a page that reads the newest commit has no bell", function () {
+  return (async () => {
   await visit('#/recipes', '.row');
   assert.equal(await page.isVisible('.bell'), false);
+})(scenarioContext);
 });
 
-test('no page logged an error', () => {
+Then("no page logged an error", function () {
+  return (() => {
   assert.deepEqual(errors, []);
+})(scenarioContext);
 });

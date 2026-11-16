@@ -5,24 +5,39 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import http from 'node:http';
-import { after, before, test } from 'node:test';
+import { After, AfterAll, BeforeAll, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import { MOCK_ACCOUNTS, mockLogin, mockPageSettings } from '../lib/mock-login.js';
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@mock-login", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 let server;
 let base;
 let mock;
 let clock = Date.now();
 
-before(async () => {
+BeforeAll(function () {
+  return (async () => {
   mock = mockLogin({ clients: { recipes: ['http://app.test/recipes/*'], other: ['http://app.test/other/'] }, now: () => clock });
   server = http.createServer(async (req, res) => {
     if (!(await mock.handle(req, res))) { res.writeHead(418); res.end(); }
   }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   base = `http://localhost:${server.address().port}`;
+})(scenarioContext);
 });
 
-after(() => server.close());
+AfterAll(function () {
+  return (() => server.close())(scenarioContext);
+});
 
 const issuer = () => `${base}/mock/auth/realms/sustenaut`;
 const oidc = (path) => `${issuer()}/protocol/openid-connect/${path}`;
@@ -54,15 +69,18 @@ async function presign(token, ask) {
   return { status: res.status, body: await res.json() };
 }
 
-test('discovery and keys describe the realm', async () => {
+Then("discovery and keys describe the realm", function () {
+  return (async () => {
   const meta = await (await fetch(`${issuer()}/.well-known/openid-configuration`)).json();
   assert.equal(meta.issuer, issuer());
   assert.deepEqual(meta.code_challenge_methods_supported, ['S256']);
   const { keys } = await (await fetch(meta.jwks_uri)).json();
   assert.equal(keys[0].alg, 'RS256');
+})(scenarioContext);
 });
 
-test('the sign-in page offers the test accounts, and comes back with a code and the state', async () => {
+Then("the sign-in page offers the test accounts, and comes back with a code and the state", function () {
+  return (async () => {
   const page = await (await fetch(`${oidc('auth')}?${new URLSearchParams(authParams())}`)).text();
   for (const a of MOCK_ACCOUNTS) assert.match(page, new RegExp(`Sign in as ${a.name}`));
   assert.match(page, /action="\/mock\/auth\/realms\/sustenaut\/protocol\/openid-connect\/auth"/);
@@ -72,9 +90,11 @@ test('the sign-in page offers the test accounts, and comes back with a code and 
   assert.equal(back.searchParams.get('state'), 's1');
   assert.equal(back.searchParams.get('iss'), issuer());
   assert.ok(back.searchParams.get('code'));
+})(scenarioContext);
 });
 
-test('a code becomes tokens for the account, once', async () => {
+Then("a code becomes tokens for the account, once", function () {
+  return (async () => {
   const back = await signIn('1');
   const exchange = () => fetch(oidc('token'), form({ grant_type: 'authorization_code', client_id: 'recipes', code: back.searchParams.get('code'), redirect_uri: authParams().redirect_uri, code_verifier: verifier }));
   const body = await (await exchange()).json();
@@ -86,9 +106,11 @@ test('a code becomes tokens for the account, once', async () => {
   assert.equal((await again.json()).error, 'invalid_grant');
   const user = await (await fetch(oidc('userinfo'), { headers: { authorization: `Bearer ${body.access_token}` } })).json();
   assert.equal(user.name, 'Ben Tester');
+})(scenarioContext);
 });
 
-test('the token exchange refuses a wrong verifier, client or redirect', async () => {
+Then("the token exchange refuses a wrong verifier, client or redirect", function () {
+  return (async () => {
   for (const extra of [{ code_verifier: 'wrong' }, { client_id: 'other' }, { redirect_uri: 'http://app.test/recipes/' }]) {
     const { res, body } = await tokens(extra);
     assert.equal(res.status, 400);
@@ -96,9 +118,11 @@ test('the token exchange refuses a wrong verifier, client or redirect', async ()
   }
   const { body } = await tokens({ grant_type: 'password' });
   assert.equal(body.error, 'unsupported_grant_type');
+})(scenarioContext);
 });
 
-test('a refresh token gives new tokens once, to its own client', async () => {
+Then("a refresh token gives new tokens once, to its own client", function () {
+  return (async () => {
   const { body } = await tokens();
   const refresh = (client) => fetch(oidc('token'), form({ grant_type: 'refresh_token', client_id: client, refresh_token: body.refresh_token }));
   assert.equal((await refresh('other')).status, 400);
@@ -107,9 +131,11 @@ test('a refresh token gives new tokens once, to its own client', async () => {
   assert.ok((await res.json()).access_token);
   const replay = await fetch(oidc('token'), form({ grant_type: 'refresh_token', client_id: 'recipes', refresh_token: second.refresh_token }));
   assert.equal(replay.status, 400);
+})(scenarioContext);
 });
 
-test('the sign-in refuses unknown clients, foreign redirects and flows without PKCE', async () => {
+Then("the sign-in refuses unknown clients, foreign redirects and flows without PKCE", function () {
+  return (async () => {
   const get = (extra) => fetch(`${oidc('auth')}?${new URLSearchParams(authParams(extra))}`, { redirect: 'manual' });
   assert.equal((await get({ client_id: 'nobody' })).status, 400);
   assert.equal((await get({ redirect_uri: 'http://evil.test/' })).status, 400);
@@ -119,9 +145,11 @@ test('the sign-in refuses unknown clients, foreign redirects and flows without P
   assert.equal(new URL(cancel.headers.get('location')).searchParams.get('error'), 'access_denied');
   assert.equal((await fetch(oidc('auth'), form({ ...authParams(), account: '9' }))).status, 400);
   assert.equal((await fetch(oidc('userinfo'), { headers: { authorization: 'Bearer nonsense' } })).status, 401);
+})(scenarioContext);
 });
 
-test('logout returns to an allowed address, named by client or by the ID token', async () => {
+Then("logout returns to an allowed address, named by client or by the ID token", function () {
+  return (async () => {
   const { body } = await tokens();
   const out = (q) => fetch(`${oidc('logout')}?${new URLSearchParams(q)}`, { redirect: 'manual' });
   const byHint = await out({ id_token_hint: body.id_token, post_logout_redirect_uri: 'http://app.test/recipes/' });
@@ -129,9 +157,11 @@ test('logout returns to an allowed address, named by client or by the ID token',
   const byClient = await out({ client_id: 'other', post_logout_redirect_uri: 'http://app.test/other/' });
   assert.equal(byClient.headers.get('location'), 'http://app.test/other/');
   assert.equal((await out({ client_id: 'recipes', post_logout_redirect_uri: 'http://evil.test/' })).status, 200);
+})(scenarioContext);
 });
 
-test('a presigned link reads and writes only the account’s own file in its app’s folder', async () => {
+Then("a presigned link reads and writes only the account’s own file in its app’s folder", function () {
+  return (async () => {
   const { body } = await tokens();
   const put = await presign(body.access_token, { method: 'PUT', key: 'favourites/a/b.json' });
   assert.equal(new URL(put.body.url).pathname, `/mock/bucket/recipes/${MOCK_ACCOUNTS[0].sub}/favourites/a/b.json`);
@@ -146,9 +176,11 @@ test('a presigned link reads and writes only the account’s own file in its app
   clock += 6 * 60 * 1000;
   assert.equal((await fetch(get.body.url)).status, 403);
   clock -= 6 * 60 * 1000;
+})(scenarioContext);
 });
 
-test('the favourites service refuses missing tokens, other apps, bad methods and keys', async () => {
+Then("the favourites service refuses missing tokens, other apps, bad methods and keys", function () {
+  return (async () => {
   assert.equal((await presign('nonsense', { method: 'GET', key: 'x' })).status, 401);
   const { body } = await tokens();
   assert.equal((await presign(body.access_token, { method: 'DELETE', key: 'x' })).status, 400);
@@ -157,9 +189,11 @@ test('the favourites service refuses missing tokens, other apps, bad methods and
   }
   const res = await fetch(`${base}/mock/presign/v1/presign`, { method: 'POST', headers: { authorization: `Bearer ${body.access_token}` }, body: 'not json' });
   assert.equal(res.status, 400);
+})(scenarioContext);
 });
 
-test('the mock answers only its own paths, preflights, and oversized bodies', async () => {
+Then("the mock answers only its own paths, preflights, and oversized bodies", function () {
+  return (async () => {
   assert.equal((await fetch(`${base}/elsewhere`)).status, 418);
   assert.equal((await fetch(`${base}/mock/nothing`)).status, 404);
   assert.equal((await fetch(`${base}/mock/auth/nothing`)).status, 404);
@@ -169,14 +203,17 @@ test('the mock answers only its own paths, preflights, and oversized bodies', as
   assert.match(pre.headers.get('access-control-allow-headers'), /authorization/);
   const big = await fetch(oidc('token'), form({ grant_type: 'x'.repeat(300 * 1024) }));
   assert.equal(big.status, 413);
+})(scenarioContext);
 });
 
-test('the preview page settings point at the mock', () => {
+Then("the preview page settings point at the mock", function () {
+  return (() => {
   assert.deepEqual(mockPageSettings(), { login: { session: '/mock/session/', required: true }, favourites: null });
   assert.deepEqual(mockPageSettings('openid'), {
     login: { issuer: '/mock/auth/realms/sustenaut', client: 'recipes', required: true },
     favourites: '/mock/presign/',
   });
+})(scenarioContext);
 });
 
 // Signs in to the session service as a test account; returns the cookie.
@@ -187,7 +224,8 @@ async function sessionCookie(account = '0', rd = `${base}/recipes/#/`) {
   return res.headers.get('set-cookie').split(';')[0];
 }
 
-test('the session service signs in, says who, and signs out, back to the page', async () => {
+Then("the session service signs in, says who, and signs out, back to the page", function () {
+  return (async () => {
   const page = await (await fetch(`${base}/mock/session/sign-in?rd=x`)).text();
   assert.match(page, /Sign in as Anna Tester/);
   const cookie = await sessionCookie();
@@ -201,9 +239,11 @@ test('the session service signs in, says who, and signs out, back to the page', 
   const cancel = await fetch(`${base}/mock/session/sign-in?rd=${encodeURIComponent('http://evil.test/')}`, form({ cancel: '1' }));
   assert.equal(cancel.headers.get('location'), `${base}/`);
   assert.equal(cancel.headers.get('set-cookie'), null);
+})(scenarioContext);
 });
 
-test('the session service keeps each account its own favourites', async () => {
+Then("the session service keeps each account its own favourites", function () {
+  return (async () => {
   const anna = await sessionCookie('0');
   const ben = await sessionCookie('1');
   const file = `${base}/mock/session/favourites/a/b.json`;
@@ -219,4 +259,5 @@ test('the session service keeps each account its own favourites', async () => {
   assert.equal((await put(anna, 'not json')).status, 400);
   assert.equal((await fetch(`${base}/mock/session/favourites/../b.json`, { headers: { cookie: anna } })).status, 404);
   assert.equal((await put(anna, JSON.stringify({ x: 'y'.repeat(70 * 1024) }))).status, 413);
+})(scenarioContext);
 });
