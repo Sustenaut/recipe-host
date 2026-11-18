@@ -2,13 +2,17 @@
 // and clicks through every view in Chromium. Run with `npm run test:browser`
 // (after `npx playwright install chromium` once). It also writes
 // coverage/browser.lcov.info, the lines of app/app.js the clicks ran.
+//
+// The suite's Givens set the site up (what GitHub and jsDelivr answer, the
+// mock sign-in, the page's clock); its Whens are what a reader does, in
+// order, and a few reads of what the browser holds, whose result pubtest's
+// steps check; its Thens read the page, waiting a moment for Alpine to
+// update it. One Chromium page serves every scenario, in this file's order.
 
-import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { After, AfterAll, BeforeAll, Then } from "@cucumber/cucumber";
-import { mock as nodeMock } from "node:test";
+import { After, AfterAll, Before, BeforeAll, Given, Then, When } from '@cucumber/cucumber';
 import { chromium } from 'playwright';
 import { buildSite } from '../lib/build.js';
 import { pageHtml, sri } from '../lib/page.js';
@@ -17,17 +21,8 @@ import { LOCAL_PAGE, serve } from '../lib/serve.js';
 import { MOCK_ACCOUNTS, mockLogin, mockPageSettings } from '../lib/mock-login.js';
 import { v8ToLcov } from './v8-lcov.js';
 
-// What node:test gave each test as `t`: its mocks, restored when the
-// scenario ends, and the cleanups it registers with t.after().
-const cleanups = [];
-const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
-After("@site", async function () {
-  while (cleanups.length) await cleanups.pop()();
-  nodeMock.restoreAll();
-});
-
-
 const FIXTURE = new URL('./fixtures/repo', import.meta.url).pathname;
+const KEY = 'recipe-host:favourites:example/recipes';
 
 let server;
 let browser;
@@ -37,11 +32,10 @@ let out;
 const errors = [];
 const loads = [];
 
-BeforeAll(function () {
-  return (async () => {
+BeforeAll(async function () {
   out = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-site-'));
   const repo = buildSite(FIXTURE, out, { cards: false, page: LOCAL_PAGE, log: () => {} });
-  assert.deepEqual(repo.errors, []);
+  if (repo.errors.length) throw new Error(`the fixture does not build: ${repo.errors.join('; ')}`);
   server = serve(out).listen(0);
   base = `http://localhost:${server.address().port}/`;
   browser = await chromium.launch();
@@ -59,228 +53,77 @@ BeforeAll(function () {
       return go(...args);
     };
   }
-})();
 });
 
-AfterAll(function () {
-  return (async () => {
+AfterAll(async function () {
   loads.push(...await page.coverage.stopJSCoverage());
   const app = loads.filter((e) => e.url.endsWith('/engine/app/app.js'));
   fs.mkdirSync('coverage', { recursive: true });
   fs.writeFileSync('coverage/browser.lcov.info', v8ToLcov(app, 'app/app.js'));
   await browser?.close();
   server?.close();
-})();
 });
 
-// A fresh load each time: going to the same URL with only the hash changed
-// would keep the page's state.
-async function visit(hash, selector) {
-  await page.goto('about:blank');
-  await page.goto(`${base}${hash}`);
-  await page.waitForSelector(selector);
-}
+// Each scenario reads the site at `this.site`, and may say which errors the
+// browser logs in it are expected; those are dropped when it ends.
+Before({ tags: '@site' }, function () {
+  this.site = base;
+  this.logged = errors.length;
+  this.expected = [];
+  this.ends = [];
+});
+
+After({ tags: '@site' }, async function () {
+  for (const end of this.ends.reverse()) await end();
+  await page.unrouteAll();
+  if (this.expected.length) {
+    const later = errors.splice(this.logged);
+    errors.push(...later.filter((e) => !this.expected.some((re) => re.test(e))));
+  }
+});
 
 // Alpine updates the page on its next tick, so read until the value settles.
-async function eventually(read, expected) {
+async function eventually(read, ok) {
+  let got;
   for (let i = 0; i < 20; i++) {
-    try { assert.deepEqual(await read(), expected); return; } catch { await page.waitForTimeout(50); }
+    got = await read();
+    if (ok(got)) return got;
+    await page.waitForTimeout(50);
   }
-  assert.deepEqual(await read(), expected);
+  return got;
 }
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const until = async (read, want) => { while (!same(await read(), want)) await page.waitForTimeout(50); };
 
-// The request the site would open as a GitHub issue, read from the popup URL.
-async function requestFrom(click, repo = 'example/recipes') {
-  const [popup] = await Promise.all([page.waitForEvent('popup'), click()]);
-  const url = new URL(popup.url());
-  await popup.close();
-  assert.equal(url.origin + url.pathname, `https://github.com/${repo}/issues/new`);
-  return JSON.parse(url.searchParams.get('body').match(/```recipe-host\n(.*)\n```/)[1]);
-}
+// Only `*` is special, for anything, newlines too, as in pubtest's patterns.
+const matches = (pattern, text) =>
+  new RegExp(`^${pattern.split('*').map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`, 's').test(text ?? '');
 
-Then("the recipe list searches ingredients and filters by type and meal", function () {
-  return (async () => {
-  await visit('#/recipes', '.row');
-  const titles = () => page.locator('.row a span').allTextContents();
-  assert.deepEqual(await titles(), ['Herb salad', 'Salsa verde']);
-  await page.fill('input[type=search]', 'jalap');
-  await eventually(() => page.locator('.row').count(), 0);
-  await page.fill('input[type=search]', 'serrano');
-  await eventually(titles, ['Salsa verde']);
-  await page.fill('input[type=search]', '');
-  // Within a group any ticked chip matches; across groups, one of each.
-  await page.click('.chip:has-text("Sauces")');
-  await eventually(titles, ['Salsa verde']);
-  await page.click('.chip:has-text("Salads")');
-  await eventually(titles, ['Herb salad', 'Salsa verde']);
-  await page.click('.chip:has-text("Lunch")');
-  await eventually(titles, ['Herb salad']);
-  assert.equal(await page.textContent('.chip:has-text("Dinner") small'), '0');
-  await page.click('text=Clear filters');
-  await eventually(titles, ['Herb salad', 'Salsa verde']);
-})();
-});
+// ---- Givens: the site and what it reads from
 
-Then("the front page shows the favourites starred on the list, kept per repository", function () {
-  return (async () => {
-  await visit('#/', '.empty');
-  assert.match(await page.textContent('.empty'), /No favourites yet/);
-  await page.click('.empty >> text=Browse all recipes');
-  await page.waitForSelector('.row');
-  await page.click('.row:has-text("Salsa verde") .star');
-  await eventually(() => page.getAttribute('.row:has-text("Salsa verde") .star', 'aria-pressed'), 'true');
-  await page.click('.row:has-text("Herb salad") .dots');
-  await page.click('.menu >> text=Add to favourites');
-  const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('recipe-host:favourites:example/recipes')));
-  assert.deepEqual([saved.version, saved.favourites], [1, ['salsa-verde', 'herb-salad']]);
-  // A fresh load reads them back.
-  await visit('#/', '.card');
-  assert.deepEqual(await page.locator('main h2').allTextContents(), ['Sauces', 'Salads']);
-  await page.click('.chip:has-text("Lunch")');
-  await eventually(() => page.locator('.card:visible strong').allTextContents(), ['Herb salad']);
-  // Unstarring on the recipe's page takes it off the front page.
-  await visit('#/recipe/herb-salad', '.steps li');
-  await eventually(() => page.textContent('.favourite span'), 'Favourite');
-  await page.click('.favourite');
-  await eventually(() => page.textContent('.favourite span'), 'Add to favourites');
-  await visit('#/', '.card');
-  assert.deepEqual(await page.locator('.card strong').allTextContents(), ['Salsa verde']);
-  // One key, named for the repository, so a ?repo= page keeps its own.
-  assert.equal(await page.evaluate(() => localStorage.length), 1);
+Given('the browser keeps no favourites', async function () {
+  await page.goto(this.site);
   await page.evaluate(() => localStorage.clear());
-})();
 });
 
-Then("the header marks the current section and shows the logo", function () {
-  return (async () => {
-  const selected = () => page.locator('.pure-menu-selected').textContent();
-  await visit('#/', 'main h1:visible');
-  assert.equal(await selected(), 'Home');
-  await visit('#/recipe/salsa-verde', '.steps li');
-  assert.equal(await selected(), 'Recipes');
-  await visit('#/ingredient/coriander', 'table');
-  assert.equal(await selected(), 'Ingredients');
-  assert.equal(await page.locator('.logo').evaluate((img) => img.complete && img.naturalWidth > 0), true);
-  assert.match(await page.getAttribute('link[rel=icon]', 'href'), /logo\.svg$/);
-  // The links not selected are muted, never Pure's grey or its black for a
-  // visited selected link.
-  const muted = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--color-muted').trim());
-  const rgb = muted.match(/[0-9a-f]{2}/gi).map((h) => parseInt(h, 16));
-  for (const a of await page.locator('.pure-menu-item:not(.pure-menu-selected) a').all()) {
-    assert.equal(await a.evaluate((el) => getComputedStyle(el).color), `rgb(${rgb.join(', ')})`);
-  }
-})();
+Given('the browser keeps the favourites {string}', async function (list) {
+  await page.goto(this.site);
+  await page.evaluate(([key, favourites]) => { localStorage.clear(); localStorage.setItem(key, JSON.stringify({ version: 1, favourites })); }, [KEY, JSON.parse(list)]);
 });
 
-Then("a recipe shows its facts, linked ingredients, swaps and notes", function () {
-  return (async () => {
-  await visit('#/recipe/salsa-verde', '.steps li');
-  assert.equal(await page.title(), 'Salsa verde · Test recipes');
-  assert.match(await page.textContent('.facts'), /Makes about 500 ml.*Prep 10 min.*Adapted from example\.com/s);
-  assert.match(await page.textContent('.alert'), /Draft method to check/);
-  assert.equal(await page.getAttribute('a.ingredient-link >> text=scallions', 'href'), '#/ingredient/scallion');
-  assert.match(await page.textContent('.swap'), /Swap Jalapeño: Use more roasted jalapeños\./);
-  assert.equal(await page.getAttribute('a >> text=herb salad', 'href'), '#/recipe/herb-salad');
-})();
+Given('the browser may log errors mentioning {string} here', function (text) {
+  this.expected.push(new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
-Then("an unknown recipe says so", function () {
-  return (async () => {
-  await visit('#/recipe/nope', 'main h1:visible');
-  assert.equal(await page.textContent('main h1:visible'), 'Not found');
-})();
-});
-
-Then("the ingredient list filters, and its menu requests a merge", function () {
-  return (async () => {
-  await visit('#/ingredients', '.row');
-  await page.fill('input[type=search]', 'onion');
-  await eventually(() => page.locator('.row a span').allTextContents(), ['Onion', 'Scallion', 'Spring onion']);
-  assert.equal(await page.isVisible('.menu'), false);
-  await page.hover('.row:has-text("Spring onion")');
-  await page.click('.row:has-text("Spring onion") .dots');
-  await page.locator('.menu').waitFor();
-  await page.click('.menu >> text=Merge into another ingredient');
-  await page.fill('dialog[open] input[type=search]', 'scal');
-  await page.click('dialog[open] .picker li:has-text("Scallion")');
-  const request = await requestFrom(() => page.click('dialog[open] >> text=Request merge on GitHub'));
-  assert.deepEqual(request, { action: 'merge-ingredients', from: 'spring-onion', into: 'scallion' });
-})();
-});
-
-Then("the menu closes on an outside click and on Escape", function () {
-  return (async () => {
-  await visit('#/ingredients', '.row');
-  await page.click('.row:has-text("Basil") .dots');
-  await page.locator('.menu').waitFor();
-  await page.click('section .lede');
-  await page.locator('.menu').waitFor({ state: 'hidden' });
-  await page.click('.row:has-text("Basil") .dots');
-  await page.locator('.menu').waitFor();
-  await page.keyboard.press('Escape');
-  await page.locator('.menu').waitFor({ state: 'hidden' });
-})();
-});
-
-Then("the menu opens below its button, or above it near the bottom of the window", function () {
-  return (async (t) => {
-  await page.setViewportSize({ width: 1000, height: 500 });
-  t.after(() => page.setViewportSize({ width: 1000, height: 800 }));
-  await visit('#/ingredients', '.row');
-  const place = async (row) => {
-    const dots = row.locator('.dots');
-    await dots.click();
-    await page.locator('.menu').waitFor();
-    await page.waitForTimeout(100);
-    const [button, menu] = [await dots.boundingBox(), await page.locator('.menu').boundingBox()];
-    await page.keyboard.press('Escape');
-    await page.locator('.menu').waitFor({ state: 'hidden' });
-    return menu.y >= button.y + button.height ? 'below' : menu.y + menu.height <= button.y ? 'above' : 'overlapping';
-  };
-  assert.equal(await place(page.locator('.row').first()), 'below');
-  // Scroll the last row to the bottom of the window.
-  const row = page.locator('.row').last();
-  await row.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().bottom - window.innerHeight + 4));
-  assert.equal(await place(row), 'above');
-})(scenarioContext);
-});
-
-Then("adding an ingredient refuses a name already on the list", function () {
-  return (async () => {
-  await visit('#/ingredients', '.row');
-  await page.click('text=Add ingredient');
-  await page.fill('dialog[open] input >> nth=0', 'cilantro');
-  await page.click('dialog[open] button[type=submit]');
-  assert.equal(await page.textContent('dialog[open] .error'), 'Coriander is already on the list under that name.');
-  await page.fill('dialog[open] input >> nth=0', 'Roasted onion');
-  const request = await requestFrom(() => page.click('dialog[open] button[type=submit]'));
-  assert.deepEqual(request, { action: 'add-ingredient', name: 'Roasted onion', aliases: [], notes: '' });
-})();
-});
-
-Then("an ingredient page lists its uses and requests a substitution for the ticked recipes", function () {
-  return (async () => {
-  await visit('#/ingredient/coriander', 'table');
-  assert.deepEqual(await page.locator('tbody tr td:nth-child(2)').allTextContents(), ['Herb salad', 'Salsa verde']);
-  assert.match(await page.locator('tbody tr').first().locator('td').nth(2).textContent(), /For the salad: 1 bunch coriander, leaves picked/);
-  const submit = page.locator('form button[type=submit]');
-  assert.equal(await submit.isDisabled(), true);
-  await page.check('input[value=herb-salad]');
-  assert.equal(await submit.isDisabled(), false);
-  await submit.click();
-  await page.fill('dialog[open] input[type=search]', 'onion');
-  await page.click('dialog[open] .picker li:has-text("Onion") >> nth=0');
-  await page.fill('dialog[open] textarea', 'Use the same weight of roasted onions.');
-  const request = await requestFrom(() => page.click('dialog[open] >> text=Request on GitHub'));
-  assert.deepEqual(request, { action: 'add-substitution', ingredient: 'coriander', recipes: ['herb-salad'], with: 'onion', note: 'Use the same weight of roasted onions.' });
-})();
+Given('the window is {int} by {int}', async function (width, height) {
+  await page.setViewportSize({ width, height });
+  this.ends.push(() => page.setViewportSize({ width: 1000, height: 800 }));
 });
 
 // A repository's published data, served the way GitHub and jsDelivr would:
 // the fixture's build under the given repository and title, at `sha`, which
-// GitHub reports as the newest commit unless `latest` says otherwise.
-async function publish(repoName, title, sha = 'a'.repeat(40), latest = sha) {
-  await page.route(`https://api.github.com/repos/${repoName}/commits/site`, (route) => route.fulfill({ body: latest }));
+// GitHub reports as the newest commit.
+async function publish(repoName, title, sha) {
   await page.route(`https://cdn.jsdelivr.net/gh/${repoName}@${sha}/**`, (route) => {
     const file = new URL(route.request().url()).pathname.split(`@${sha}/`)[1];
     if (file !== 'index.json') return route.fulfill({ path: path.join(out, file) });
@@ -290,234 +133,31 @@ async function publish(repoName, title, sha = 'a'.repeat(40), latest = sha) {
   });
 }
 
-Then("?repo= shows another repository and sends its requests there", function () {
-  return (async () => {
-  await publish('friend/cookbook', "Friend's cookbook");
-  await visit('?repo=friend/cookbook#/recipe/salsa-verde', '.steps li');
-  assert.equal(await page.textContent('.pure-menu-heading span'), "Friend's cookbook");
-  assert.equal(await page.title(), "Salsa verde · Friend's cookbook");
-  assert.equal(await page.getAttribute('text=Source on GitHub', 'href'), 'https://github.com/friend/cookbook/blob/main/recipes/sauces/salsa-verde.md');
-  assert.match(await page.textContent('.site-footer'), /Recipes from friend\/cookbook\s+· Back to the recipes from example\/recipes/);
-  // Links inside the site keep the repository.
-  await page.click('a.ingredient-link >> text=scallions');
-  await page.waitForSelector('table');
-  assert.equal(new URL(page.url()).search, '?repo=friend/cookbook');
-  await page.check('input[value=salsa-verde]');
-  await page.click('form button[type=submit]');
-  await page.click('dialog[open] .picker li:has-text("Onion") >> nth=0');
-  await page.fill('dialog[open] textarea', 'Roasted onions.');
-  const request = await requestFrom(() => page.click('dialog[open] >> text=Request on GitHub'), 'friend/cookbook');
-  assert.equal(request.action, 'add-substitution');
-  await page.unrouteAll();
-})();
+Given('{string} has published the fixture as {string}', async function (repoName, title) {
+  const sha = 'a'.repeat(40);
+  await page.route(`https://api.github.com/repos/${repoName}/commits/site`, (route) => route.fulfill({ body: sha }));
+  await publish(repoName, title, sha);
 });
 
-Then("?repo= naming a repository with nothing published says how to set it up", function () {
-  return (async () => {
-  const before = errors.length;
+Given('{string} has published the fixture as {string} at {string}', async function (repoName, title, sha) {
+  await publish(repoName, title, sha);
+});
+
+// What GitHub reports as the newest publish, which a later step may change;
+// the scenario counts how often the page asked.
+Given('GitHub reports {string} as the newest publish', async function (sha) {
+  this.latest = sha;
+  this.asked = 0;
+  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => { this.asked += 1; return route.fulfill({ body: this.latest }); });
+});
+
+Given('GitHub and jsDelivr know nothing', async function () {
   await page.route('https://api.github.com/**', (route) => route.fulfill({ status: 404, body: '' }));
   await page.route('https://cdn.jsdelivr.net/gh/**', (route) => route.fulfill({ status: 404, body: '' }));
-  await visit('?repo=nobody/nothing#/', 'article:has-text("No recipes here yet")');
-  const article = page.locator('article:has-text("No recipes here yet")');
-  assert.match(await article.textContent(), /This repository \(nobody\/nothing\) has not yet been set up to host recipes\./);
-  assert.equal(await article.locator('a', { hasText: 'nobody/nothing' }).getAttribute('href'), 'https://github.com/nobody/nothing');
-  assert.equal(await article.locator('a', { hasText: 'these instructions' }).getAttribute('href'), 'https://github.com/Sustenaut/recipe-host#set-up-a-recipe-repository');
-  assert.equal(await page.isVisible('article:has-text("Something went wrong")'), false);
-  await page.unrouteAll();
-  errors.splice(before); // the browser logs the 404s themselves
-})();
 });
 
-// The same fixture on a second origin, signing in through the mock
-// Sustenaut sign-in and keeping favourites in the mock bucket.
-Then("a site with login asks readers to sign in and keeps their favourites in their bucket", function () {
-  return (async () => {
-  const loginOut = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-login-'));
-  buildSite(FIXTURE, loginOut, { cards: false, page: { ...LOCAL_PAGE, ...mockPageSettings('openid') }, log: () => {} });
-  const mock = mockLogin();
-  const loginServer = serve(loginOut, { mock }).listen(0);
-  const site = `http://localhost:${loginServer.address().port}/`;
-  const [anna, ben] = MOCK_ACCOUNTS;
-  const saved = (account) => {
-    const file = mock.bucket.get(`/mock/bucket/recipes/${account.sub}/favourites/example/recipes.json`);
-    return file && JSON.parse(file.body).favourites;
-  };
-  const logged = errors.length;
-  try {
-    // Nothing shows before signing in, and the sign-in comes back to the
-    // same address, ?repo= and view included.
-    await page.goto('about:blank');
-    await page.goto(`${site}?repo=example/recipes#/recipes`);
-    await page.waitForSelector('.sign-in button');
-    assert.equal(await page.isVisible('.row'), false);
-    await page.click('.sign-in button');
-    await page.click(`text=Sign in as ${anna.name}`);
-    await page.waitForSelector('.row');
-    assert.equal(page.url(), `${site}?repo=example/recipes#/recipes`);
-    assert.equal(await page.textContent('.account .who'), anna.name);
-
-    // A star is saved in Anna's file, not in the browser.
-    await page.click('.row:has-text("Salsa verde") .star');
-    await eventually(() => saved(anna), ['salsa-verde']);
-    assert.equal(await page.evaluate(() => localStorage.length), 0);
-    await page.goto('about:blank');
-    await page.goto(`${site}#/`);
-    await page.waitForSelector('.card');
-    assert.deepEqual(await page.locator('.card strong').allTextContents(), ['Salsa verde']);
-
-    // Signing out goes back to the sign-in screen.
-    await page.click('.account button');
-    await page.waitForSelector('.sign-in button');
-
-    // Ben starts from what this browser kept, and that moves to his file.
-    await page.evaluate(() => localStorage.setItem('recipe-host:favourites:example/recipes', JSON.stringify({ version: 1, favourites: ['herb-salad'] })));
-    await page.click('.sign-in button');
-    await page.click(`text=Sign in as ${ben.name}`);
-    await page.waitForSelector('.card');
-    assert.deepEqual(await page.locator('.card strong').allTextContents(), ['Herb salad']);
-    assert.deepEqual(saved(ben), ['herb-salad']);
-    assert.deepEqual(saved(anna), ['salsa-verde']);
-    await page.evaluate(() => localStorage.clear());
-
-    // An expired sign-in is renewed with the refresh token, on opening the
-    // page and before saving.
-    mock.settings.accessSeconds = 1;
-    await page.click('.account button');
-    await page.click('.sign-in button');
-    await page.click(`text=Sign in as ${ben.name}`);
-    await page.waitForSelector('.card');
-    await page.waitForTimeout(1500);
-    await page.goto('about:blank');
-    await page.goto(`${site}#/recipes`);
-    await page.waitForSelector('.row');
-    assert.equal(await page.textContent('.account .who'), ben.name);
-    await page.waitForTimeout(1500);
-    await page.click('.row:has-text("Salsa verde") .star');
-    await eventually(() => saved(ben), ['herb-salad', 'salsa-verde']);
-    mock.settings.accessSeconds = 300;
-    await page.click('.account button');
-
-    // A published page that needs sign-in asks nothing of GitHub or the
-    // recipe data before it: only the page itself and its libraries load.
-    const pinned = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, ...mockPageSettings('openid'), data: 'https://cdn.jsdelivr.net/gh/example/recipes@abc/' });
-    fs.writeFileSync(path.join(loginOut, 'pinned.html'), pinned);
-    const asked = [];
-    const record = (req) => asked.push(new URL(req.url()));
-    await page.goto('about:blank');
-    page.on('request', record);
-    await page.goto(`${site}pinned.html#/`);
-    await page.waitForSelector('.sign-in button');
-    await page.waitForTimeout(300);
-    page.off('request', record);
-    assert.deepEqual(asked.filter((u) => u.origin !== site.slice(0, -1)).map((u) => u.href), []);
-    assert.deepEqual(asked.filter((u) => !/^\/(pinned\.html|engine\/|vendor\/)/.test(u.pathname)).map((u) => u.href), []);
-    await page.goto(`${site}#/`);
-    await page.waitForSelector('.sign-in button');
-
-    // Cancelling at the sign-in page says so.
-    await page.waitForSelector('.sign-in button');
-    await page.click('.sign-in button');
-    await page.click('text=Cancel');
-    await eventually(() => page.textContent('.sign-in .alert'), 'Sign-in was cancelled.');
-    // The browser logs the 404 of a favourites file not yet written.
-    assert.ok(errors.slice(logged).every((e) => e.includes('404')));
-    errors.splice(logged);
-  } finally {
-    // Leave the page first, so nothing it still loads meets a closed server.
-    await page.goto('about:blank');
-    loginServer.close();
-  }
-})();
-});
-
-// Signing in through a session service on the same site, like
-// share.schryer.eu: its own cookie, and favourites it keeps itself.
-Then("a site with a session service signs readers in there and keeps their favourites there", function () {
-  return (async () => {
-  const sessionOut = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-session-'));
-  buildSite(FIXTURE, sessionOut, { cards: false, page: { ...LOCAL_PAGE, ...mockPageSettings('session') }, log: () => {} });
-  const mock = mockLogin();
-  const sessionServer = serve(sessionOut, { mock }).listen(0);
-  const site = `http://localhost:${sessionServer.address().port}/`;
-  const [anna, ben] = MOCK_ACCOUNTS;
-  const kept = (account) => {
-    const file = mock.kept.get(`${account.email}/favourites/example/recipes.json`);
-    return file && JSON.parse(file).favourites;
-  };
-  const logged = errors.length;
-  try {
-    // No sign-in library: the service does the signing in.
-    await page.goto('about:blank');
-    await page.goto(`${site}?repo=example/recipes#/recipes`);
-    await page.waitForSelector('.sign-in button');
-    assert.equal(await page.evaluate(() => typeof window.oidc), 'undefined');
-    await page.click('.sign-in button');
-    await page.click(`text=Sign in as ${anna.name}`);
-    await page.waitForSelector('.row');
-    assert.equal(page.url(), `${site}?repo=example/recipes#/recipes`);
-    assert.equal(await page.textContent('.account .who'), anna.name);
-
-    await page.click('.row:has-text("Salsa verde") .star');
-    await eventually(() => kept(anna), ['salsa-verde']);
-    await page.goto('about:blank');
-    await page.goto(`${site}#/`);
-    await page.waitForSelector('.card');
-    assert.deepEqual(await page.locator('.card strong').allTextContents(), ['Salsa verde']);
-
-    await page.click('.account button');
-    await page.waitForSelector('.sign-in button');
-    await page.evaluate(() => localStorage.setItem('recipe-host:favourites:example/recipes', JSON.stringify({ version: 1, favourites: ['herb-salad'] })));
-    await page.click('.sign-in button');
-    await page.click(`text=Sign in as ${ben.name}`);
-    await page.waitForSelector('.card');
-    assert.deepEqual(await page.locator('.card strong').allTextContents(), ['Herb salad']);
-    assert.deepEqual(kept(ben), ['herb-salad']);
-    await page.evaluate(() => localStorage.clear());
-    await page.click('.account button');
-    await page.waitForSelector('.sign-in button');
-    assert.deepEqual(errors.slice(logged).filter((e) => !/40[14]/.test(e)), []);
-    errors.splice(logged);
-  } finally {
-    sessionServer.close();
-  }
-})();
-});
-
-Then("a pinned page lights the bell when a newer publish is out, and reloads into it", function () {
-  return (async () => {
-  const [old, newer] = ['a'.repeat(40), 'b'.repeat(40)];
-  const pinned = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${old}/` });
-  fs.writeFileSync(path.join(out, 'pinned.html'), pinned);
-  await publish('example/recipes', 'Old recipes', old);
-  await publish('example/recipes', 'New recipes', newer);
-  // Registered last, so it answers first: GitHub reports the pinned commit
-  // until `latest` changes.
-  let latest = old;
-  let asked = 0;
-  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => { asked += 1; return route.fulfill({ body: latest }); });
-  await page.clock.install();
-  await page.goto('about:blank');
-  await page.goto(`${base}pinned.html#/recipe/salsa-verde`);
-  await page.waitForSelector('.steps li');
-  await page.locator('.bell').waitFor();
-  assert.equal(await page.isVisible('.bell.active'), false);
-  assert.equal(await page.isVisible('.reload'), false);
-  // The bell shows before the check on opening has its answer: wait for
-  // that answer, so it is the pinned commit and not the newer one.
-  await eventually(() => asked > 0, true);
-  latest = newer;
-  await page.clock.runFor(30 * 60 * 1000);
-  assert.equal(await page.isVisible('.bell.active'), false);
-  await page.clock.runFor(30 * 60 * 1000);
-  await page.locator('.bell.active').waitFor();
-  assert.equal(await page.textContent('.pure-menu-heading span'), 'Old recipes');
-  await page.click('.reload');
-  await eventually(() => page.textContent('.pure-menu-heading span'), 'New recipes');
-  await eventually(() => page.isVisible('.bell.active'), false);
-  await eventually(() => page.isVisible('.reload'), false);
-  await page.waitForSelector('.steps li');
-  await page.unrouteAll();
-})();
+Given('the site has a page {string} pinned to the commit {string}', function (name, sha) {
+  fs.writeFileSync(path.join(out, name), pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${sha}/` }));
 });
 
 // A publish at `sha` served byte for byte, as jsDelivr would: its
@@ -536,131 +176,310 @@ async function publishExactly(sha, title, tamper = {}) {
   return sri(json);
 }
 
-// The browser reports each file it refuses, and each request a test cut
-// off; those are what the integrity tests expect.
-function forgetRefusals() {
-  errors.splice(0, errors.length, ...errors.filter((e) => !/integrity|valid digest|net::ERR_FAILED/.test(e)));
+function deployChecked(sha, dataIntegrity, config = loadConfig(FIXTURE)) {
+  fs.writeFileSync(path.join(out, 'checked.html'), pageHtml(config, { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${sha}/`, dataIntegrity }));
 }
 
-function deployChecked(sha, dataIntegrity) {
-  const html = pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${sha}/`, dataIntegrity });
-  fs.writeFileSync(path.join(out, 'checked.html'), html);
-}
+Given('jsDelivr serves the publish {string} titled {string} byte for byte', async function (sha, title) {
+  (this.integrity ??= {})[sha] = await publishExactly(sha, title);
+});
 
-Then("a page that names its data's hash refuses data that is not what was published", function () {
-  return (async () => {
-  const sha = 'c'.repeat(40);
-  const integrity = await publishExactly(sha, 'Checked recipes', { 'recipes/herb-salad.json': (body) => body.replace('Herb salad', 'Weed salad') });
-  // The page checks for a newer publish on opening; there is none.
-  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => route.fulfill({ body: sha }));
-  deployChecked(sha, integrity);
-  await page.goto('about:blank');
-  await page.goto(`${base}checked.html#/recipe/salsa-verde`);
-  await page.waitForSelector('.steps li');
-  assert.equal(await page.textContent('.pure-menu-heading span'), 'Checked recipes');
-  // A recipe file that was changed on the way is refused.
-  await page.goto(`${base}checked.html#/recipe/herb-salad`);
-  await page.waitForSelector('text=Something went wrong');
-  assert.equal(await page.isVisible('text=Weed salad'), false);
-  // So is an index that is not the one the page names.
+Given('jsDelivr serves the publish {string} titled {string} with {string} changed from {string} to {string}', async function (sha, title, file, from, to) {
+  (this.integrity ??= {})[sha] = await publishExactly(sha, title, { [file]: (body) => body.replace(from, to) });
+});
+
+// checked.html: a page that reads one publish and names its data's hash.
+Given('the host serves a page that reads the publish {string} and names its hash', function (sha) {
+  deployChecked(sha, this.integrity[sha]);
+});
+
+Given('the host serves a page that reads the publish {string} and names another hash', function (sha) {
   deployChecked(sha, sri('something else'));
-  await page.goto('about:blank');
-  await page.goto(`${base}checked.html#/recipes`);
-  await page.waitForSelector('text=Something went wrong');
-  assert.equal(await page.isVisible('.row'), false);
-  await page.unrouteAll();
-  forgetRefusals();
-})();
 });
 
-Then("a page that names its data's hash reloads only into data its host names", function () {
-  return (async () => {
-  const [old, newer] = ['d'.repeat(40), 'e'.repeat(40)];
-  deployChecked(old, await publishExactly(old, 'Old checked recipes'));
-  const newIntegrity = await publishExactly(newer, 'New checked recipes');
-  let latest = old;
-  let asked = 0;
-  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => { asked += 1; return route.fulfill({ body: latest }); });
+Given('the page\'s clock is a test clock', async function () {
   await page.clock.install();
-  await page.goto('about:blank');
-  await page.goto(`${base}checked.html#/recipe/salsa-verde`);
-  await page.waitForSelector('.steps li');
-  await eventually(() => asked > 0, true);
-  latest = newer;
-  await page.clock.runFor(60 * 60 * 1000);
-  await page.locator('.bell.active').waitFor();
-  // GitHub has the newer publish, but the host still serves the old page:
-  // nothing changes, and the bell stays lit.
-  await page.click('.reload');
-  await page.waitForTimeout(200);
-  assert.equal(await page.textContent('.pure-menu-heading span'), 'Old checked recipes');
-  assert.equal(await page.isVisible('.bell.active'), true);
-  assert.match(await page.textContent('.update-note'), /still being published/);
-  // Nor while the host can't be reached.
-  await page.route(`${base}checked.html`, (route) => route.abort());
-  await page.click('.reload');
-  await page.waitForTimeout(200);
-  assert.equal(await page.textContent('.pure-menu-heading span'), 'Old checked recipes');
-  await page.unroute(`${base}checked.html`);
-  // A newer page whose hash the data does not match: the data is refused
-  // and the page keeps what it shows.
-  deployChecked(newer, sri('something else'));
-  await page.click('.reload');
-  await page.waitForTimeout(200);
-  assert.equal(await page.textContent('.pure-menu-heading span'), 'Old checked recipes');
-  assert.equal(await page.isVisible('.bell.active'), true);
-  // Once the newer page is deployed, the reload takes its data and hash.
-  deployChecked(newer, newIntegrity);
-  await page.click('.reload');
-  await eventually(() => page.textContent('.pure-menu-heading span'), 'New checked recipes');
-  await eventually(() => page.isVisible('.bell.active'), false);
-  await page.waitForSelector('.steps li');
-  assert.equal(await page.isVisible('.update-note'), false);
-  await page.unrouteAll();  forgetRefusals();
-})();
 });
 
-Then("a newer publish that changes the page itself reloads the page", function () {
-  return (async () => {
-  const [old, newer] = ['f'.repeat(40), '1'.repeat(40)];
-  deployChecked(old, await publishExactly(old, 'Old checked recipes'));
-  const newIntegrity = await publishExactly(newer, 'New checked recipes');
-  let latest = old;
-  let asked = 0;
-  await page.route('https://api.github.com/repos/example/recipes/commits/site', (route) => { asked += 1; return route.fulfill({ body: latest }); });
-  await page.clock.install();
+// The fixture on a second origin, signing in through the mock (lib/mock-login.js):
+// "OpenID Connect" keeps favourites in the mock's bucket, "a session service" in the service.
+Given('the site signs in through the mock with {word}', async function (way) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `recipe-host-${way}-`));
+  buildSite(FIXTURE, dir, { cards: false, page: { ...LOCAL_PAGE, ...mockPageSettings(way) }, log: () => {} });
+  this.mock = mockLogin();
+  this.siteDir = dir;
+  const own = serve(dir, { mock: this.mock }).listen(0);
+  this.site = `http://localhost:${own.address().port}/`;
+  // Leave the page first, so nothing it still loads meets a closed server.
+  this.ends.push(async () => { await page.goto('about:blank'); own.close(); });
+});
+
+Given('the mock\'s sign-in lasts {int} second(s)', function (seconds) {
+  this.mock.settings.accessSeconds = seconds;
+});
+
+Given('the site has a page {string} that needs sign-in and is pinned to one commit', function (name) {
+  fs.writeFileSync(path.join(this.siteDir, name), pageHtml(loadConfig(FIXTURE), { ...LOCAL_PAGE, ...mockPageSettings('openid'), data: 'https://cdn.jsdelivr.net/gh/example/recipes@abc/' }));
+});
+
+// ---- Whens: what a reader does. Defined once, they read as a Given too.
+
+When('I open {string}', async function (address) {
   await page.goto('about:blank');
-  await page.goto(`${base}checked.html#/recipe/salsa-verde`);
-  await page.waitForSelector('.steps li');
-  await eventually(() => asked > 0, true);
-  latest = newer;
-  await page.clock.runFor(60 * 60 * 1000);
-  await page.locator('.bell.active').waitFor();
-  // The newer page has other settings (here a new title), which swapping
-  // the data alone would not bring in: the page reloads, onto the same view.
-  const config = { ...loadConfig(FIXTURE), title: 'Renamed recipes' };
-  const html = pageHtml(config, { ...LOCAL_PAGE, data: `https://cdn.jsdelivr.net/gh/example/recipes@${newer}/`, dataIntegrity: newIntegrity });
-  fs.writeFileSync(path.join(out, 'checked.html'), html);
+  await page.goto(`${this.site}${address}`);
+});
+
+When('I open {string}, once {string} shows', async function (address, selector) {
+  // A fresh load each time: going to the same URL with only the hash changed
+  // would keep the page's state.
+  await page.goto('about:blank');
+  await page.goto(`${this.site}${address}`);
+  await page.waitForSelector(selector);
+});
+
+When('I go to {string} on the same page, once {string} shows', async function (address, selector) {
+  await page.goto(`${this.site}${address}`);
+  await page.waitForSelector(selector);
+});
+
+When('I click {string}', async function (selector) {
+  await page.click(selector);
+});
+
+When('I type {string} into {string}', async function (text, selector) {
+  await page.fill(selector, text);
+});
+
+When('I clear {string}', async function (selector) {
+  await page.fill(selector, '');
+});
+
+When('I tick {string}', async function (selector) {
+  await page.check(selector);
+});
+
+When('I hover over {string}', async function (selector) {
+  await page.hover(selector);
+});
+
+When('I press {string}', async function (key) {
+  await page.keyboard.press(key);
+});
+
+When('I wait until {string} shows', async function (selector) {
+  await page.locator(selector).first().waitFor();
+});
+
+When('I wait until {string} hides', async function (selector) {
+  await page.locator(selector).first().waitFor({ state: 'hidden' });
+});
+
+When('I wait {int} ms', async function (ms) {
+  await page.waitForTimeout(ms);
+});
+
+When('I sign in as {string}', async function (name) {
+  await page.click('.sign-in button');
+  await page.click(`text=Sign in as ${name}`);
+});
+
+When('I sign out', async function () {
+  await page.click('.account button');
+});
+
+When('the page has asked GitHub for the newest publish', async function () {
+  await until(() => this.asked > 0, true);
+});
+
+When('GitHub reports {string} as the newest publish from now on', function (sha) {
+  this.latest = sha;
+});
+
+When('{int} minutes pass on the page\'s clock', async function (minutes) {
+  await page.clock.runFor(minutes * 60 * 1000);
+});
+
+When('the host serves the page for the publish {string} under the title {string}', function (sha, title) {
+  deployChecked(sha, this.integrity[sha], { ...loadConfig(FIXTURE), title });
+});
+
+When('the host can\'t be reached for {string}', async function (name) {
+  await page.route(`${this.site}${name}`, (route) => route.abort());
+  this.expected.push(/net::ERR_FAILED/);
+});
+
+When('the host can be reached for {string} again', async function (name) {
+  await page.unroute(`${this.site}${name}`);
+});
+
+When('I click {string}, which reloads the page', async function (selector) {
   await page.evaluate(() => { window.beforeReload = true; });
-  await page.click('.reload');
+  await page.click(selector);
   await page.waitForFunction(() => !window.beforeReload);
-  await page.waitForSelector('.steps li');
-  assert.equal(await page.evaluate(() => window.RECIPE_HOST.title), 'Renamed recipes');
-  assert.equal(await page.textContent('.pure-menu-heading span'), 'New checked recipes');
-  await page.unrouteAll();
-  forgetRefusals();
-})();
 });
 
-Then("a page that reads the newest commit has no bell", function () {
-  return (async () => {
-  await visit('#/recipes', '.row');
-  assert.equal(await page.isVisible('.bell'), false);
-})();
+// The request the site would open as a GitHub issue, read from the popup URL.
+When('I click {string}, which opens a GitHub issue', async function (selector) {
+  await this.attempt(async () => {
+    const [popup] = await Promise.all([page.waitForEvent('popup'), page.click(selector)]);
+    const url = new URL(popup.url());
+    await popup.close();
+    return { issue: url.origin + url.pathname, request: JSON.parse(url.searchParams.get('body').match(/```recipe-host\n(.*)\n```/)[1]) };
+  });
 });
 
-Then("no page logged an error", function () {
-  return (() => {
-  assert.deepEqual(errors, []);
-})();
+// ---- Reads, at the end of a When: their result is pubtest's to check.
+
+When('I read what the browser keeps for example\\/recipes', async function () {
+  await this.attempt(async () => JSON.parse(await page.evaluate((key) => localStorage.getItem(key), KEY)));
+});
+
+When('I count the keys the browser keeps', async function () {
+  await this.attempt(() => page.evaluate(() => localStorage.length));
+});
+
+When('I read the page\'s address', async function () {
+  await this.attempt(() => page.url().replace(this.site, '/'));
+});
+
+When('I ask whether {string} is disabled', async function (selector) {
+  await this.attempt(() => page.locator(selector).isDisabled());
+});
+
+When('I ask whether the image {string} has loaded', async function (selector) {
+  await this.attempt(() => page.locator(selector).evaluate((img) => img.complete && img.naturalWidth > 0));
+});
+
+When('I evaluate {string} on the page', async function (expression) {
+  await this.attempt(() => page.evaluate(expression));
+});
+
+// The links not selected are muted, never Pure's grey or its black for a
+// visited selected link: the colours of those that are not --color-muted.
+When('I list the colours of the menu\'s links not selected that are not the theme\'s muted colour', async function () {
+  await this.attempt(async () => {
+    const muted = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--color-muted').trim());
+    const rgb = `rgb(${muted.match(/[0-9a-f]{2}/gi).map((h) => parseInt(h, 16)).join(', ')})`;
+    const colours = [];
+    for (const a of await page.locator('.pure-menu-item:not(.pure-menu-selected) a').all()) colours.push(await a.evaluate((el) => getComputedStyle(el).color));
+    return colours.length ? colours.filter((c) => c !== rgb) : ['no links'];
+  });
+});
+
+// Where the menu of a row opens: below its button, above it, or overlapping.
+async function place(row) {
+  const dots = row.locator('.dots');
+  await dots.click();
+  await page.locator('.menu').waitFor();
+  await page.waitForTimeout(100);
+  const [button, menu] = [await dots.boundingBox(), await page.locator('.menu').boundingBox()];
+  await page.keyboard.press('Escape');
+  await page.locator('.menu').waitFor({ state: 'hidden' });
+  return menu.y >= button.y + button.height ? 'below' : menu.y + menu.height <= button.y ? 'above' : 'overlapping';
+}
+
+When('I open the menu of the first row', async function () {
+  await this.attempt(() => place(page.locator('.row').first()));
+});
+
+When('I open the menu of the last row, scrolled to the bottom of the window', async function () {
+  await this.attempt(async () => {
+    const row = page.locator('.row').last();
+    await row.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().bottom - window.innerHeight + 4));
+    return place(row);
+  });
+});
+
+When('I read the favourites the mock keeps for {string}', async function (name) {
+  await this.attempt(async () => {
+    const account = MOCK_ACCOUNTS.find((a) => a.name === name);
+    const read = () => {
+      const file = this.mock.bucket.get(`/mock/bucket/recipes/${account.sub}/favourites/example/recipes.json`)
+        ?? this.mock.kept.get(`${account.email}/favourites/example/recipes.json`);
+      const body = typeof file === 'string' ? file : file?.body;
+      return body ? JSON.parse(body).favourites : null;
+    };
+    // Saved after the click, so wait a moment for it to change.
+    const before = read();
+    return eventually(read, (now) => !same(now, before));
+  });
+});
+
+When('I read the favourites the mock keeps for {string} now', async function (name) {
+  await this.attempt(() => {
+    const account = MOCK_ACCOUNTS.find((a) => a.name === name);
+    const file = this.mock.bucket.get(`/mock/bucket/recipes/${account.sub}/favourites/example/recipes.json`)
+      ?? this.mock.kept.get(`${account.email}/favourites/example/recipes.json`);
+    const body = typeof file === 'string' ? file : file?.body;
+    return body ? JSON.parse(body).favourites : null;
+  });
+});
+
+// The addresses a page asks for while it opens, beyond the site's own page,
+// its app and its libraries.
+When('I list what opening {string} asks for beyond the site\'s page, app and libraries', async function (address) {
+  await this.attempt(async () => {
+    const asked = [];
+    const record = (req) => asked.push(new URL(req.url()));
+    await page.goto('about:blank');
+    page.on('request', record);
+    await page.goto(`${this.site}${address}`);
+    await page.waitForSelector('.sign-in button');
+    await page.waitForTimeout(300);
+    page.off('request', record);
+    const own = this.site.slice(0, -1);
+    return asked.filter((u) => u.origin !== own || !/^\/(pinned\.html|engine\/|vendor\/)/.test(u.pathname)).map((u) => u.href);
+  });
+});
+
+When('I gather the errors every page logged', async function () {
+  await this.attempt(() => [...errors]);
+});
+
+// ---- Thens: the page, read until it settles.
+
+const text = (selector) => page.locator(selector).first().textContent();
+const fail = (what, got) => { throw new Error(`${what}: ${JSON.stringify(got)}`); };
+
+Then('the page\'s {string} reads {string}', async function (selector, want) {
+  const got = await eventually(() => text(selector), (t) => t === want);
+  if (got !== want) fail(`${selector} reads`, got);
+});
+
+Then('the page\'s {string} includes {string}', async function (selector, want) {
+  const got = await eventually(() => text(selector), (t) => t?.includes(want));
+  if (!got?.includes(want)) fail(`${selector} reads`, got);
+});
+
+Then('the page\'s {string} matches {string}', async function (selector, pattern) {
+  const got = await eventually(() => text(selector), (t) => matches(pattern, t));
+  if (!matches(pattern, got)) fail(`${selector} reads`, got);
+});
+
+Then('the page\'s {string} lists {string}', async function (selector, list) {
+  const want = JSON.parse(list);
+  const got = await eventually(() => page.locator(selector).allTextContents(), (t) => same(t, want));
+  if (!same(got, want)) fail(`${selector} lists`, got);
+});
+
+Then('the page shows {string}', async function (selector) {
+  if (!(await eventually(() => page.isVisible(selector), Boolean))) fail(`${selector} does not show`, selector);
+});
+
+Then('the page does not show {string}', async function (selector) {
+  if (await eventually(() => page.isVisible(selector), (v) => !v)) fail(`${selector} shows`, selector);
+});
+
+Then('the page\'s {string} has {string} set to {string}', async function (selector, name, want) {
+  const got = await eventually(() => page.getAttribute(selector, name), (v) => v === want);
+  if (got !== want) fail(`${selector}'s ${name} is`, got);
+});
+
+Then('the page\'s {string} has {string} matching {string}', async function (selector, name, pattern) {
+  const got = await eventually(() => page.getAttribute(selector, name), (v) => matches(pattern, v));
+  if (!matches(pattern, got)) fail(`${selector}'s ${name} is`, got);
+});
+
+Given('the browser may log any error here', function () {
+  this.expected.push(/.*/s);
 });

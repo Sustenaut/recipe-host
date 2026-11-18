@@ -1,263 +1,211 @@
-// The mock Sustenaut sign-in and favourites service (lib/mock-login.js):
-// the code flow with PKCE, refresh, presigned links, and every refusal the
-// real services make. The browser test signs in through it from the page.
+// The mock Sustenaut sign-in and favourites service (lib/mock-login.js),
+// served on a port of its own and asked as http://login.test, so the
+// addresses it names are the same in every run. The suite's steps carry
+// what a flow passes on (a code, tokens, a link, a cookie); pubtest's steps
+// send the plain requests and check what came back.
 
-import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import http from 'node:http';
-import { After, AfterAll, BeforeAll, Then } from "@cucumber/cucumber";
-import { mock as nodeMock } from "node:test";
-import { MOCK_ACCOUNTS, mockLogin, mockPageSettings } from '../lib/mock-login.js';
+import { Given, When } from '@cucumber/cucumber';
+import { Answer } from '@sustenaut/pubtest/http';
+import { mockLogin, mockPageSettings } from '../lib/mock-login.js';
 
-// What node:test gave each test as `t`: its mocks, restored when the
-// scenario ends, and the cleanups it registers with t.after().
-const cleanups = [];
-const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
-After("@mock-login", async function () {
-  while (cleanups.length) await cleanups.pop()();
-  nodeMock.restoreAll();
-});
-
-
-let server;
-let base;
-let mock;
-let clock = Date.now();
-
-BeforeAll(function () {
-  return (async () => {
-  mock = mockLogin({ clients: { recipes: ['http://app.test/recipes/*'], other: ['http://app.test/other/'] }, now: () => clock });
-  server = http.createServer(async (req, res) => {
-    if (!(await mock.handle(req, res))) { res.writeHead(418); res.end(); }
-  }).listen(0);
-  await new Promise((resolve) => server.once('listening', resolve));
-  base = `http://localhost:${server.address().port}`;
-})();
-});
-
-AfterAll(function () {
-  return (() => server.close())();
-});
-
-const issuer = () => `${base}/mock/auth/realms/sustenaut`;
-const oidc = (path) => `${issuer()}/protocol/openid-connect/${path}`;
+const ORIGIN = 'http://login.test';
+const OIDC = '/mock/auth/realms/sustenaut/protocol/openid-connect';
 const verifier = 'a-verifier-long-enough-for-pkce-0123456789abcdef';
 const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
 const claims = (jwt) => JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url'));
-const form = (fields) => ({ method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString(), redirect: 'manual' });
-
+const FORM = { 'content-type': 'application/x-www-form-urlencoded' };
 const authParams = (extra = {}) => ({
   client_id: 'recipes', redirect_uri: 'http://app.test/recipes/?repo=a/b', response_type: 'code',
   code_challenge: challenge, code_challenge_method: 'S256', state: 's1', nonce: 'n1', scope: 'openid profile', ...extra,
 });
 
-// Signs in as a test account; returns the redirect back to the app.
-async function signIn(account = '0', extra = {}) {
-  const res = await fetch(oidc('auth'), form({ ...authParams(extra), account }));
-  assert.equal(res.status, 302);
-  return new URL(res.headers.get('location'));
-}
-
-async function tokens(extra = {}) {
-  const back = await signIn();
-  const res = await fetch(oidc('token'), form({ grant_type: 'authorization_code', client_id: 'recipes', code: back.searchParams.get('code'), redirect_uri: authParams().redirect_uri, code_verifier: verifier, ...extra }));
-  return { res, body: await res.json() };
-}
-
-async function presign(token, ask) {
-  const res = await fetch(`${base}/mock/presign/v1/presign`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(ask) });
-  return { status: res.status, body: await res.json() };
-}
-
-Then("discovery and keys describe the realm", function () {
-  return (async () => {
-  const meta = await (await fetch(`${issuer()}/.well-known/openid-configuration`)).json();
-  assert.equal(meta.issuer, issuer());
-  assert.deepEqual(meta.code_challenge_methods_supported, ['S256']);
-  const { keys } = await (await fetch(meta.jwks_uri)).json();
-  assert.equal(keys[0].alg, 'RS256');
-})();
-});
-
-Then("the sign-in page offers the test accounts, and comes back with a code and the state", function () {
-  return (async () => {
-  const page = await (await fetch(`${oidc('auth')}?${new URLSearchParams(authParams())}`)).text();
-  for (const a of MOCK_ACCOUNTS) assert.match(page, new RegExp(`Sign in as ${a.name}`));
-  assert.match(page, /action="\/mock\/auth\/realms\/sustenaut\/protocol\/openid-connect\/auth"/);
-  const back = await signIn();
-  assert.equal(back.origin + back.pathname, 'http://app.test/recipes/');
-  assert.equal(back.searchParams.get('repo'), 'a/b');
-  assert.equal(back.searchParams.get('state'), 's1');
-  assert.equal(back.searchParams.get('iss'), issuer());
-  assert.ok(back.searchParams.get('code'));
-})();
-});
-
-Then("a code becomes tokens for the account, once", function () {
-  return (async () => {
-  const back = await signIn('1');
-  const exchange = () => fetch(oidc('token'), form({ grant_type: 'authorization_code', client_id: 'recipes', code: back.searchParams.get('code'), redirect_uri: authParams().redirect_uri, code_verifier: verifier }));
-  const body = await (await exchange()).json();
-  const access = claims(body.access_token);
-  assert.deepEqual([access.iss, access.sub, access.azp, access.aud], [issuer(), MOCK_ACCOUNTS[1].sub, 'recipes', ['presign']]);
-  assert.deepEqual([claims(body.id_token).nonce, claims(body.id_token).name], ['n1', 'Ben Tester']);
-  const again = await exchange();
-  assert.equal(again.status, 400);
-  assert.equal((await again.json()).error, 'invalid_grant');
-  const user = await (await fetch(oidc('userinfo'), { headers: { authorization: `Bearer ${body.access_token}` } })).json();
-  assert.equal(user.name, 'Ben Tester');
-})();
-});
-
-Then("the token exchange refuses a wrong verifier, client or redirect", function () {
-  return (async () => {
-  for (const extra of [{ code_verifier: 'wrong' }, { client_id: 'other' }, { redirect_uri: 'http://app.test/recipes/' }]) {
-    const { res, body } = await tokens(extra);
-    assert.equal(res.status, 400);
-    assert.equal(body.error, 'invalid_grant');
-  }
-  const { body } = await tokens({ grant_type: 'password' });
-  assert.equal(body.error, 'unsupported_grant_type');
-})();
-});
-
-Then("a refresh token gives new tokens once, to its own client", function () {
-  return (async () => {
-  const { body } = await tokens();
-  const refresh = (client) => fetch(oidc('token'), form({ grant_type: 'refresh_token', client_id: client, refresh_token: body.refresh_token }));
-  assert.equal((await refresh('other')).status, 400);
-  const { body: second } = await tokens();
-  const res = await fetch(oidc('token'), form({ grant_type: 'refresh_token', client_id: 'recipes', refresh_token: second.refresh_token }));
-  assert.ok((await res.json()).access_token);
-  const replay = await fetch(oidc('token'), form({ grant_type: 'refresh_token', client_id: 'recipes', refresh_token: second.refresh_token }));
-  assert.equal(replay.status, 400);
-})();
-});
-
-Then("the sign-in refuses unknown clients, foreign redirects and flows without PKCE", function () {
-  return (async () => {
-  const get = (extra) => fetch(`${oidc('auth')}?${new URLSearchParams(authParams(extra))}`, { redirect: 'manual' });
-  assert.equal((await get({ client_id: 'nobody' })).status, 400);
-  assert.equal((await get({ redirect_uri: 'http://evil.test/' })).status, 400);
-  const plain = new URL((await get({ code_challenge_method: 'plain' })).headers.get('location'));
-  assert.equal(plain.searchParams.get('error'), 'invalid_request');
-  const cancel = await fetch(oidc('auth'), form({ ...authParams(), cancel: '1' }));
-  assert.equal(new URL(cancel.headers.get('location')).searchParams.get('error'), 'access_denied');
-  assert.equal((await fetch(oidc('auth'), form({ ...authParams(), account: '9' }))).status, 400);
-  assert.equal((await fetch(oidc('userinfo'), { headers: { authorization: 'Bearer nonsense' } })).status, 401);
-})();
-});
-
-Then("logout returns to an allowed address, named by client or by the ID token", function () {
-  return (async () => {
-  const { body } = await tokens();
-  const out = (q) => fetch(`${oidc('logout')}?${new URLSearchParams(q)}`, { redirect: 'manual' });
-  const byHint = await out({ id_token_hint: body.id_token, post_logout_redirect_uri: 'http://app.test/recipes/' });
-  assert.equal(byHint.headers.get('location'), 'http://app.test/recipes/');
-  const byClient = await out({ client_id: 'other', post_logout_redirect_uri: 'http://app.test/other/' });
-  assert.equal(byClient.headers.get('location'), 'http://app.test/other/');
-  assert.equal((await out({ client_id: 'recipes', post_logout_redirect_uri: 'http://evil.test/' })).status, 200);
-})();
-});
-
-Then("a presigned link reads and writes only the account’s own file in its app’s folder", function () {
-  return (async () => {
-  const { body } = await tokens();
-  const put = await presign(body.access_token, { method: 'PUT', key: 'favourites/a/b.json' });
-  assert.equal(new URL(put.body.url).pathname, `/mock/bucket/recipes/${MOCK_ACCOUNTS[0].sub}/favourites/a/b.json`);
-  const get = await presign(body.access_token, { method: 'GET', key: 'favourites/a/b.json' });
-  assert.equal((await fetch(get.body.url)).status, 404);
-  assert.equal((await fetch(put.body.url, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{"favourites":["x"]}' })).status, 200);
-  const read = await fetch(get.body.url);
-  assert.deepEqual([read.headers.get('content-type'), (await read.json()).favourites], ['application/json', ['x']]);
-  // A GET link does not write, a tampered one does nothing, an old one has expired.
-  assert.equal((await fetch(get.body.url, { method: 'PUT', body: '{}' })).status, 403);
-  assert.equal((await fetch(get.body.url.replace('signature=', 'signature=x'))).status, 403);
-  clock += 6 * 60 * 1000;
-  assert.equal((await fetch(get.body.url)).status, 403);
-  clock -= 6 * 60 * 1000;
-})();
-});
-
-Then("the favourites service refuses missing tokens, other apps, bad methods and keys", function () {
-  return (async () => {
-  assert.equal((await presign('nonsense', { method: 'GET', key: 'x' })).status, 401);
-  const { body } = await tokens();
-  assert.equal((await presign(body.access_token, { method: 'DELETE', key: 'x' })).status, 400);
-  for (const key of ['../x', 'a/../b', 'Capital', '', 'x'.repeat(201)]) {
-    assert.equal((await presign(body.access_token, { method: 'GET', key })).status, 400, key);
-  }
-  const res = await fetch(`${base}/mock/presign/v1/presign`, { method: 'POST', headers: { authorization: `Bearer ${body.access_token}` }, body: 'not json' });
-  assert.equal(res.status, 400);
-})();
-});
-
-Then("the mock answers only its own paths, preflights, and oversized bodies", function () {
-  return (async () => {
-  assert.equal((await fetch(`${base}/elsewhere`)).status, 418);
-  assert.equal((await fetch(`${base}/mock/nothing`)).status, 404);
-  assert.equal((await fetch(`${base}/mock/auth/nothing`)).status, 404);
-  assert.equal((await fetch(`${base}/mock/presign/v1/other`, { method: 'POST' })).status, 404);
-  const pre = await fetch(`${base}/mock/presign/v1/presign`, { method: 'OPTIONS' });
-  assert.equal(pre.status, 204);
-  assert.match(pre.headers.get('access-control-allow-headers'), /authorization/);
-  const big = await fetch(oidc('token'), form({ grant_type: 'x'.repeat(300 * 1024) }));
-  assert.equal(big.status, 413);
-})();
-});
-
-Then("the preview page settings point at the mock", function () {
-  return (() => {
-  assert.deepEqual(mockPageSettings(), { login: { session: '/mock/session/', required: true }, favourites: null });
-  assert.deepEqual(mockPageSettings('openid'), {
-    login: { issuer: '/mock/auth/realms/sustenaut', client: 'recipes', required: true },
-    favourites: '/mock/presign/',
+// A request to the mock as http://login.test: a path, or an address there.
+function ask(world, method, address, headers = {}, body = undefined) {
+  const url = new URL(address, ORIGIN);
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: world.mockPort, method, path: url.pathname + url.search, headers: { ...headers, host: 'login.test' } }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve(new Answer(res.statusCode, Object.fromEntries(Object.entries(res.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : v])), Buffer.concat(chunks).toString())));
+    });
+    req.on('error', reject);
+    req.end(body);
   });
-})();
+}
+const post = (world, path, fields) => ask(world, 'POST', path, FORM, new URLSearchParams(fields).toString());
+const json = (a) => { try { return a.json(); } catch { return a.text; } };
+
+Given('the mock sign-in service, for the apps recipes at http:\\/\\/app.test\\/recipes\\/* and other at http:\\/\\/app.test\\/other\\/', async function () {
+  this.clock = Date.now();
+  this.mock = mockLogin({ clients: { recipes: ['http://app.test/recipes/*'], other: ['http://app.test/other/'] }, now: () => this.clock });
+  const server = http.createServer(async (req, res) => {
+    if (!(await this.mock.handle(req, res))) { res.writeHead(418); res.end(); }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  this.pubtest.cleanup(() => new Promise((resolve) => { server.closeAllConnections(); server.close(resolve); }));
+  this.mockPort = server.address().port;
+  this.service = (method, path, headers, body) => ask(this, method, path, headers, body);
 });
 
-// Signs in to the session service as a test account; returns the cookie.
-async function sessionCookie(account = '0', rd = `${base}/recipes/#/`) {
-  const res = await fetch(`${base}/mock/session/sign-in?rd=${encodeURIComponent(rd)}`, form({ account }));
-  assert.equal(res.status, 302);
-  assert.equal(res.headers.get('location'), rd);
-  return res.headers.get('set-cookie').split(';')[0];
+// The code flow: sign in as a test account, and the redirect back to the app.
+async function signIn(world, account) {
+  const back = await post(world, `${OIDC}/auth`, { ...authParams(), account });
+  return { status: back.status, location: back.header('location') };
 }
 
-Then("the session service signs in, says who, and signs out, back to the page", function () {
-  return (async () => {
-  const page = await (await fetch(`${base}/mock/session/sign-in?rd=x`)).text();
-  assert.match(page, /Sign in as Anna Tester/);
-  const cookie = await sessionCookie();
-  const me = await fetch(`${base}/mock/session/me`, { headers: { cookie } });
-  assert.deepEqual(await me.json(), { email: 'anna@example.org', name: 'Anna Tester' });
-  assert.equal((await fetch(`${base}/mock/session/me`)).status, 401);
-  const out = await fetch(`${base}/mock/session/sign-out?rd=${encodeURIComponent(`${base}/recipes/`)}`, { redirect: 'manual' });
-  assert.equal(out.headers.get('location'), `${base}/recipes/`);
-  assert.match(out.headers.get('set-cookie'), /Max-Age=0/);
-  // Cancelling, or a page elsewhere, goes back without a session.
-  const cancel = await fetch(`${base}/mock/session/sign-in?rd=${encodeURIComponent('http://evil.test/')}`, form({ cancel: '1' }));
-  assert.equal(cancel.headers.get('location'), `${base}/`);
-  assert.equal(cancel.headers.get('set-cookie'), null);
-})();
+async function exchange(world, extra = {}) {
+  const code = new URL(world.signedIn.location).searchParams.get('code');
+  const res = await post(world, `${OIDC}/token`, { grant_type: 'authorization_code', client_id: 'recipes', code, redirect_uri: authParams().redirect_uri, code_verifier: verifier, ...extra });
+  const body = json(res);
+  return { status: res.status, ...body, ...(body.access_token ? { access: claims(body.access_token), id: claims(body.id_token) } : {}) };
+}
+
+When('I sign in as account {string}', async function (account) {
+  await this.attempt(async () => {
+    const { status, location } = await signIn(this, account);
+    const back = new URL(location);
+    const params = Object.fromEntries(back.searchParams);
+    if (!params.code) delete params.code;
+    return { status, back: back.origin + back.pathname, ...params };
+  });
 });
 
-Then("the session service keeps each account its own favourites", function () {
-  return (async () => {
-  const anna = await sessionCookie('0');
-  const ben = await sessionCookie('1');
-  const file = `${base}/mock/session/favourites/a/b.json`;
-  const put = (cookie, body, type = 'application/json') => fetch(file, { method: 'PUT', headers: { cookie, 'content-type': type }, body });
-  assert.equal((await fetch(file, { headers: { cookie: anna } })).status, 404);
-  assert.equal((await put(anna, '{"favourites":["x"]}')).status, 200);
-  assert.deepEqual((await (await fetch(file, { headers: { cookie: anna } })).json()).favourites, ['x']);
-  assert.equal((await fetch(file, { headers: { cookie: ben } })).status, 404);
-  assert.equal(mock.kept.size, 1);
-  // Refusals: not signed in, not JSON, a bad name, too big.
-  assert.equal((await fetch(file)).status, 401);
-  assert.equal((await put(anna, 'x', 'text/plain')).status, 415);
-  assert.equal((await put(anna, 'not json')).status, 400);
-  assert.equal((await fetch(`${base}/mock/session/favourites/../b.json`, { headers: { cookie: anna } })).status, 404);
-  assert.equal((await put(anna, JSON.stringify({ x: 'y'.repeat(70 * 1024) }))).status, 413);
-})();
+Given('I signed in as account {string}', async function (account) {
+  this.signedIn = await signIn(this, account);
+});
+
+Given('I hold tokens for account {string}', async function (account) {
+  this.signedIn = await signIn(this, account);
+  this.tokens = await exchange(this);
+});
+
+Given('I hold the access token {string}', function (token) {
+  this.tokens = { access_token: token };
+});
+
+// pubtest's HTTP steps send it from here on.
+Given('requests carry my access token', function () {
+  this.pubtest.headers.authorization = `Bearer ${this.tokens.access_token}`;
+});
+
+When('I exchange the code for tokens', async function () {
+  await this.attempt(() => exchange(this));
+});
+
+When('I exchange the code for tokens again', async function () {
+  await this.attempt(() => exchange(this));
+});
+
+When('I exchange the code for tokens with {string} set to {string}', async function (field, value) {
+  await this.attempt(() => exchange(this, { [field]: value }));
+});
+
+async function refresh(world, client) {
+  const res = await post(world, `${OIDC}/token`, { grant_type: 'refresh_token', client_id: client, refresh_token: world.tokens.refresh_token });
+  return { status: res.status, ...json(res) };
+}
+
+When('I refresh my tokens as the client {string}', async function (client) {
+  await this.attempt(() => refresh(this, client));
+});
+
+When('I refresh my tokens as the client {string} again', async function (client) {
+  await this.attempt(() => refresh(this, client));
+});
+
+When('I log out with my ID token as the hint, back to {string}', async function (to) {
+  await this.attempt(async () => {
+    const res = await ask(this, 'GET', `${OIDC}/logout?${new URLSearchParams({ id_token_hint: this.tokens.id_token, post_logout_redirect_uri: to })}`);
+    return { status: res.status, location: res.header('location') };
+  });
+});
+
+// The favourites service: a presigned link for a key.
+async function presign(world, method, key) {
+  const res = await ask(world, 'POST', '/mock/presign/v1/presign', { authorization: `Bearer ${world.tokens.access_token}`, 'content-type': 'application/json' }, JSON.stringify({ method, key }));
+  const body = json(res);
+  return { status: res.status, ...(body.url ? { path: new URL(body.url).pathname, url: body.url } : body) };
+}
+
+When('I ask for a link to {string} the file {string}', async function (method, key) {
+  await this.attempt(() => presign(this, method, key));
+});
+
+Given('links to read and write the file {string}', async function (key) {
+  this.links = { GET: (await presign(this, 'GET', key)).url, PUT: (await presign(this, 'PUT', key)).url };
+});
+
+Given('{string} was written through the link', async function (body) {
+  await ask(this, 'PUT', this.links.PUT, { 'content-type': 'application/json' }, body);
+});
+
+Given('{int} minutes pass', function (minutes) {
+  this.clock += minutes * 60 * 1000;
+});
+
+const through = async (world, link, method, body, change = (u) => u) => {
+  const res = await ask(world, method, change(world.links[link]), body ? { 'content-type': 'application/json' } : {}, body);
+  return { status: res.status, type: res.header('content-type') ?? null, body: json(res) };
+};
+
+When('I read through the read link', async function () {
+  await this.attempt(() => through(this, 'GET', 'GET'));
+});
+
+When('I write {string} through the write link', async function (body) {
+  await this.attempt(() => through(this, 'PUT', 'PUT', body));
+});
+
+When('I write {string} through the read link', async function (body) {
+  await this.attempt(() => through(this, 'GET', 'PUT', body));
+});
+
+When('I read through the read link with its signature changed', async function () {
+  await this.attempt(() => through(this, 'GET', 'GET', undefined, (u) => u.replace('signature=', 'signature=x')));
+});
+
+When('I send the token endpoint a form of {int} KiB', async function (size) {
+  await this.attempt(async () => (await post(this, `${OIDC}/token`, { grant_type: 'x'.repeat(size * 1024) })).status);
+});
+
+When('I read the preview page settings', async function () {
+  await this.attempt(() => mockPageSettings());
+});
+
+When('I read the preview page settings for {string}', async function (way) {
+  await this.attempt(() => mockPageSettings(way));
+});
+
+// The session service: its cookie, carried by pubtest's requests.
+Given('I am signed in to the session service as account {string}', async function (account) {
+  const res = await post(this, `/mock/session/sign-in?rd=${encodeURIComponent(`${ORIGIN}/recipes/#/`)}`, { account });
+  this.pubtest.headers.cookie = res.header('set-cookie').split(';')[0];
+});
+
+When('I sign in to the session service as account {string}, back to {string}', async function (account, rd) {
+  await this.attempt(async () => {
+    const res = await post(this, `/mock/session/sign-in?rd=${encodeURIComponent(rd)}`, { account });
+    return { status: res.status, location: res.header('location'), ...(res.header('set-cookie') ? { cookie: res.header('set-cookie') } : {}) };
+  });
+});
+
+When('I cancel the session service\'s sign-in, back to {string}', async function (rd) {
+  await this.attempt(async () => {
+    const res = await post(this, `/mock/session/sign-in?rd=${encodeURIComponent(rd)}`, { cancel: '1' });
+    return { status: res.status, location: res.header('location'), ...(res.header('set-cookie') ? { cookie: res.header('set-cookie') } : {}) };
+  });
+});
+
+When('I count the files the session service keeps', async function () {
+  await this.attempt(() => this.mock.kept.size);
+});
+
+When('I write favourites of {int} KiB to {string}', async function (size, path) {
+  await this.attempt(async () => (await ask(this, 'PUT', path, { cookie: this.pubtest.headers.cookie, 'content-type': 'application/json' }, JSON.stringify({ x: 'y'.repeat(size * 1024) }))).status);
+});
+
+Given('{string} was written to the session service\'s {string}', async function (body, path) {
+  await ask(this, 'PUT', path, { cookie: this.pubtest.headers.cookie, 'content-type': 'application/json' }, body);
 });
