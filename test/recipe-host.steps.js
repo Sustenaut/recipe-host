@@ -1,438 +1,192 @@
-import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+// Building a recipe site: the suite's own Givens and Whens, which call
+// lib/ on a recipe repository in pubtest's scratch directory (most often
+// test/fixtures/kitchen, copied there). pubtest's steps check what came back.
+
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { After, Then } from "@cucumber/cucumber";
-import { mock as nodeMock } from "node:test";
+import { BeforeAll, Given, Then, When } from '@cucumber/cucumber';
 import { buildSite, cardData, typstPath } from '../lib/build.js';
 import { ASSETS, INTEGRITY, pageHtml, sri } from '../lib/page.js';
 import { linkRecipe } from '../lib/link.js';
-import { parseIngredientLine, parseRecipe, parseIngredient, plainText, slugify, splitSections } from '../lib/parse.js';
+import { parseIngredientLine, parseRecipe, plainText, slugify, splitSections } from '../lib/parse.js';
 import { buildIndex, loadRepo } from '../lib/repo.js';
-import { applyRequest, readRequest, RequestError } from '../lib/requests.js';
+import { applyRequest, readRequest } from '../lib/requests.js';
 
-// What node:test gave each test as `t`: its mocks, restored when the
-// scenario ends, and the cleanups it registers with t.after().
-const cleanups = [];
-const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
-After("@recipe-host", async function () {
-  while (cleanups.length) await cleanups.pop()();
-  nodeMock.restoreAll();
+const REPO = new URL('../', import.meta.url);
+
+// `recipe-host` for pubtest's `the program under test is`: bin/recipe-host.js
+// under that name, unless RECIPE_HOST_BIN_DIR names a build already.
+BeforeAll(function () {
+  if (process.env.RECIPE_HOST_BIN_DIR) return;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-bin-'));
+  fs.symlinkSync(new URL('bin/recipe-host.js', REPO).pathname, path.join(dir, 'recipe-host'));
+  process.env.RECIPE_HOST_BIN_DIR = dir;
 });
 
+const scratch = (world, rel = '.') => path.join(world.pubtest.directory, rel);
+const read = (world, rel) => fs.readFileSync(scratch(world, rel), 'utf8');
 
-const RECIPE = `---
-title: Salsa verde
-subtitle: Charred tomatillo and chilli salsa
-tags: [sauce, mexican]
-date: 2026-10-19
-makes: about 500 ml
-prep: 10 min
----
-
-> [!NOTE]
-> **Draft method for David to check.**
-
-Char the vegetables properly.
-
-## Ingredients
-
-- 2 [serrano chillies](/ingredients/serrano-chilli.md), stems removed
-- 6 [scallions](/ingredients/scallion.md)
-- 1 bunch [cilantro](/ingredients/coriander.md) with stems,
-  roughly chopped
-
-## Method
-
-1. **Char the vegetables.** Heat the oil until it shimmers.
-2. **Blend.** Blend until smooth.
-
-## Notes
-
-- Keeps for a week.
-`;
-
-const SALAD = `---
-title: Herb salad
-subtitle: Leaves and herbs
-tags: [salad]
-date: 2026-10-19
-serves: 2
----
-
-## Ingredients
-
-### For the salad
-
-- 1 bunch [coriander](/ingredients/coriander.md), leaves picked
-- 2 [spring onions](/ingredients/spring-onion.md), sliced
-
-## Method
-
-1. Toss.
-`;
-
-function ing(name, extra = '') {
-  return `---\nname: ${name}\n${extra}---\n`;
-}
-
-function makeRepo(files = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-test-'));
-  const all = {
-    'recipes/sauces/salsa-verde.md': RECIPE,
-    'recipes/salads/herb-salad.md': SALAD,
-    'ingredients/serrano-chilli.md': ing('Serrano chilli', 'aliases: [serrano]\n'),
-    'ingredients/jalapeno.md': ing('Jalapeño'),
-    'ingredients/scallion.md': ing('Scallion', 'aliases: [green onion]\n'),
-    'ingredients/spring-onion.md': `---\nname: Spring onion\n---\n\nThe same plant as a scallion.\n`,
-    'ingredients/coriander.md': ing('Coriander', 'aliases: [cilantro]\n'),
-    'ingredients/onion.md': ing('Onion'),
-    ...files,
-  };
-  for (const [rel, text] of Object.entries(all)) {
-    if (text === null) continue;
-    fs.mkdirSync(path.join(root, path.dirname(rel)), { recursive: true });
-    fs.writeFileSync(path.join(root, rel), text);
-  }
-  return root;
-}
-
-const read = (root, rel) => fs.readFileSync(path.join(root, rel), 'utf8');
-
-Then("an ingredient line splits into quantity, references and preparation", function () {
-  return (() => {
-  const line = parseIngredientLine('6 cloves [garlic](/ingredients/garlic.md), minced');
-  assert.deepEqual(line.refs, [{ id: 'garlic', label: 'garlic' }]);
-  assert.equal(line.quantity, '6 cloves');
-  assert.equal(line.preparation, 'minced');
-  assert.equal(line.text, '6 cloves garlic, minced');
-})();
+When('I split the ingredient line {string}', async function (line) {
+  await this.attempt(() => parseIngredientLine(line));
 });
 
-Then("a recipe parses into facts, ingredient groups and named steps", function () {
-  return (() => {
-  const r = parseRecipe('recipes/sauces/salsa-verde.md', RECIPE);
-  assert.equal(r.slug, 'salsa-verde');
-  assert.equal(r.category, 'sauces');
-  assert.deepEqual(r.facts, { makes: 'about 500 ml', prep: '10 min' });
-  assert.equal(r.ingredientGroups[0].items.length, 3);
-  assert.equal(r.ingredientGroups[0].items[2].preparation, 'with stems, roughly chopped');
-  assert.deepEqual(r.steps.map((s) => s.name), ['Char the vegetables', 'Blend']);
-})();
+When('I parse the recipe {string}', async function (rel) {
+  await this.attempt(() => parseRecipe(rel, read(this, rel)));
 });
 
-Then("a recipe without links, servings or a method reports every problem", function () {
-  return (() => {
-  const bad = '---\ntitle: X\nsubtitle: Y\ntags: [a]\ndate: 2026-10-19\n---\n\n## Ingredients\n\n- 2 eggs\n';
-  assert.throws(() => parseRecipe('recipes/x/bad.md', bad), (err) => {
-    assert.equal(err.problems.length, 3);
-    assert.match(err.message, /serves` or `makes`/);
-    assert.match(err.message, /links no ingredient/);
-    assert.match(err.message, /no `## Method`/);
-    return true;
+When('I parse the recipe {string}:', async function (rel, text) {
+  await this.attempt(() => parseRecipe(rel, text));
+});
+
+When('I list the problems parsing the recipe {string} finds', async function (rel) {
+  await this.attempt(() => {
+    try {
+      parseRecipe(rel, read(this, rel));
+      return [];
+    } catch (err) {
+      return err.problems;
+    }
   });
-})();
 });
 
-Then("a link to an ingredient without a file is an error", function () {
-  return (() => {
-  const root = makeRepo({ 'ingredients/coriander.md': null });
-  const repo = loadRepo(root);
-  assert.equal(repo.errors.length, 2);
-  assert.match(repo.errors[0], /links the ingredient "coriander", which has no file/);
-})();
+When('I load the recipe repository', async function () {
+  await this.attempt(() => loadRepo(scratch(this)));
 });
 
-Then("an unused ingredient is a warning, not an error", function () {
-  return (() => {
-  const repo = loadRepo(makeRepo());
-  assert.deepEqual(repo.errors, []);
-  assert.deepEqual(repo.warnings, ['ingredients/jalapeno.md: no recipe uses "Jalapeño" yet', 'ingredients/onion.md: no recipe uses "Onion" yet']);
-})();
+When('I build the index and read the ingredient {string}', async function (id) {
+  await this.attempt(() => buildIndex(loadRepo(scratch(this))).ingredients.find((i) => i.id === id));
 });
 
-Then("the index lists each ingredient with the recipes that use it and how", function () {
-  return (() => {
-  const index = buildIndex(loadRepo(makeRepo()));
-  const coriander = index.ingredients.find((i) => i.id === 'coriander');
-  assert.deepEqual(coriander.uses.map((u) => [u.recipe, u.group, u.preparation]), [
-    ['herb-salad', 'For the salad', 'leaves picked'],
-    ['salsa-verde', null, 'with stems, roughly chopped'],
-  ]);
-  assert.deepEqual(index.recipes.find((r) => r.slug === 'salsa-verde').ingredients, ['serrano-chilli', 'scallion', 'coriander']);
-})();
+When('I build the index and read the recipe {string}', async function (slug) {
+  await this.attempt(() => buildIndex(loadRepo(scratch(this))).recipes.find((r) => r.slug === slug));
 });
 
-Then("card data is plain text with the draft note kept", function () {
-  return (() => {
-  const r = parseRecipe('recipes/sauces/salsa-verde.md', RECIPE);
-  const card = cardData(r, { url: 'https://schryer.eu/recipes/' });
-  assert.equal(card.footer, 'schryer.eu/recipes');
-  assert.deepEqual(card.intro[0], { kind: 'note', text: 'Draft method for David to check.' });
-  assert.equal(card.groups[0].items[0], '2 serrano chillies, stems removed');
-  assert.deepEqual(card.notes, ['Keeps for a week.']);
-})();
+When('I make the card of the recipe {string} for the site at {string}', async function (rel, url) {
+  await this.attempt(() => cardData(parseRecipe(rel, read(this, rel)), { url }));
 });
 
-Then("a request is read from the recipe-host block of an issue", function () {
-  return (() => {
-  assert.equal(readRequest('Just a question'), null);
-  assert.deepEqual(readRequest('Text\n\n```recipe-host\n{"action":"add-ingredient","name":"Leek"}\n```\n'), { action: 'add-ingredient', name: 'Leek' });
-  assert.throws(() => readRequest('```recipe-host\nnot json\n```'), RequestError);
-})();
+When('I read the request in the issue:', async function (body) {
+  await this.attempt(() => readRequest(body));
 });
 
-Then("merging relinks recipes and keeps the old name as an alias", function () {
-  return (() => {
-  const root = makeRepo();
-  const result = applyRequest(root, { action: 'merge-ingredients', from: 'spring-onion', into: 'scallion' });
-  assert.equal(result.title, 'Merge Spring onion into Scallion');
-  assert.ok(!fs.existsSync(path.join(root, 'ingredients/spring-onion.md')));
-  assert.match(read(root, 'recipes/salads/herb-salad.md'), /2 \[spring onions\]\(\/ingredients\/scallion\.md\), sliced/);
-  const scallion = parseIngredient('ingredients/scallion.md', read(root, 'ingredients/scallion.md'));
-  assert.deepEqual(scallion.aliases, ['green onion', 'Spring onion']);
-  assert.match(scallion.notes, /### From Spring onion\n\nThe same plant as a scallion\./);
-  assert.deepEqual(loadRepo(root).errors, []);
-})();
+When('I read the request in the issue, its lines ending in CRLF:', async function (body) {
+  await this.attempt(() => readRequest(body.replaceAll('\n', '\r\n')));
 });
 
-Then("merging moves substitutions that point at the merged ingredient", function () {
-  return (() => {
-  const root = makeRepo({
-    'ingredients/serrano-chilli.md': ing('Serrano chilli', 'substitutions:\n  - with: jalapeno\n    recipes: [salsa-verde]\n    note: Use more.\n'),
+When('I read the request in an issue of {int} lines {string}', async function (n, line) {
+  await this.attempt(() => readRequest(`${line}\n`.repeat(n)));
+});
+
+const applying = (world, request) => applyRequest(scratch(world), JSON.parse(request));
+
+Given('the request has been applied:', function (request) {
+  applying(this, request);
+});
+
+When('I apply the request:', async function (request) {
+  await this.attempt(() => applying(this, request));
+});
+
+When('I link the recipe {string}', async function (rel) {
+  await this.attempt(() => linkRecipe(scratch(this), rel));
+});
+
+// The page: site settings, and pageHtml's options.
+Given('the site settings:', function (config) {
+  this.site = JSON.parse(config);
+});
+
+Given('the site settings of the recipe repository', function () {
+  this.site = loadRepo(scratch(this)).config;
+});
+
+When('I write its page', async function () {
+  await this.attempt(() => pageHtml(this.site));
+});
+
+When('I write its page with:', async function (options) {
+  await this.attempt(() => pageHtml(this.site, JSON.parse(options)));
+});
+
+const TAGS = /<(script|link rel="stylesheet")[^>]* (src|href)="[^"]+"[^>]*>/g;
+
+When('I list the scripts and stylesheets on its page', async function () {
+  await this.attempt(() => pageHtml(this.site).match(TAGS));
+});
+
+When('I list the scripts and stylesheets on its page that name no integrity', async function () {
+  await this.attempt(() => pageHtml(this.site).match(TAGS).filter((tag) => !/ integrity="sha384-[A-Za-z0-9+/]+={0,2}" crossorigin="anonymous"/.test(tag)));
+});
+
+When('I ask whether its page names the integrity of {string} as the file is', async function (file) {
+  await this.attempt(() => pageHtml(this.site).includes(`${path.basename(file)}" integrity="${sri(fs.readFileSync(new URL(file, REPO)))}"`));
+});
+
+When('I hash each library the page loads, as node_modules has it', async function () {
+  await this.attempt(() => Object.entries(ASSETS).flatMap(([key, [name, version, file]]) => {
+    const installed = JSON.parse(fs.readFileSync(new URL(`node_modules/${name}/package.json`, REPO), 'utf8')).version;
+    const hash = sri(fs.readFileSync(new URL(`node_modules/${name}/${file}`, REPO)));
+    return [
+      ...(installed === version ? [] : [`ASSETS.${key} pins ${name}@${version} but package.json installs ${installed}`]),
+      ...(INTEGRITY[key] === hash ? [] : [`INTEGRITY.${key} must be '${hash}', the hash of ${name}@${version}/${file}`]),
+    ];
+  }));
+});
+
+Given('the site built from {string} into {string}, without cards', function (root, out) {
+  buildSite(scratch(this, root), scratch(this, out), { cards: false, log: () => {} });
+});
+
+When('I hash each recipe file the index in {string} lists', async function (out) {
+  await this.attempt(() => {
+    const { integrity } = JSON.parse(read(this, path.join(out, 'index.json')));
+    return {
+      listed: Object.keys(integrity).sort(),
+      mismatched: Object.entries(integrity).filter(([file, hash]) => sri(fs.readFileSync(scratch(this, path.join(out, file)))) !== hash).map(([file]) => file),
+    };
   });
-  applyRequest(root, { action: 'merge-ingredients', from: 'jalapeno', into: 'onion' });
-  assert.match(read(root, 'ingredients/serrano-chilli.md'), /with: onion/);
-})();
 });
 
-Then("an ingredient cannot be merged into itself or a missing one", function () {
-  return (() => {
-  const root = makeRepo();
-  assert.throws(() => applyRequest(root, { action: 'merge-ingredients', from: 'onion', into: 'onion' }), /into itself/);
-  assert.throws(() => applyRequest(root, { action: 'merge-ingredients', from: 'onion', into: 'leek' }), /no ingredient "leek"/);
-})();
-});
-
-Then("adding an ingredient writes its file and refuses duplicates", function () {
-  return (() => {
-  const root = makeRepo();
-  const result = applyRequest(root, { action: 'add-ingredient', name: 'Roasted onion', aliases: 'charred onion', notes: 'Roast at 220 °C.' });
-  assert.equal(result.branch, 'add-roasted-onion');
-  const added = parseIngredient('ingredients/roasted-onion.md', read(root, 'ingredients/roasted-onion.md'));
-  assert.deepEqual([added.name, added.aliases, added.notes], ['Roasted onion', ['charred onion'], 'Roast at 220 °C.']);
-  assert.throws(() => applyRequest(root, { action: 'add-ingredient', name: 'cilantro' }), /already an alias of Coriander/);
-})();
-});
-
-Then("a substitution note is stored on the ingredient for the chosen recipes", function () {
-  return (() => {
-  const root = makeRepo();
-  const result = applyRequest(root, {
-    action: 'add-substitution', ingredient: 'serrano-chilli', with: 'jalapeno', recipes: ['salsa-verde'],
-    note: 'More roasted jalapeños plus a small dose of hotter chilli extract to taste.',
+// typst: an environment value names the scratch directory as {scratch}, and
+// so does the result; {unset} leaves the variable out, {empty} sets it empty.
+When('I look for typst with:', async function (table) {
+  await this.attempt(() => {
+    const env = Object.fromEntries(table.rows().filter(([, v]) => v !== '{unset}')
+      .map(([k, v]) => [k, v === '{empty}' ? '' : v.replaceAll('{scratch}', scratch(this))]));
+    return typstPath(env)?.replace(path.resolve(scratch(this)), '{scratch}') ?? null;
   });
-  assert.equal(result.title, 'Substitute Jalapeño for Serrano chilli');
-  const serrano = parseIngredient('ingredients/serrano-chilli.md', read(root, 'ingredients/serrano-chilli.md'));
-  assert.deepEqual(serrano.substitutions, [{ with: 'jalapeno', recipes: ['salsa-verde'], note: 'More roasted jalapeños plus a small dose of hotter chilli extract to taste.' }]);
-})();
 });
 
-Then("a substitution for a recipe that does not use the ingredient is refused", function () {
-  return (() => {
-  const root = makeRepo();
-  assert.throws(
-    () => applyRequest(root, { action: 'add-substitution', ingredient: 'serrano-chilli', with: 'jalapeno', recipes: ['herb-salad'], note: 'x' }),
-    /"herb-salad", which does not use Serrano chilli/,
-  );
-  assert.ok(!read(root, 'ingredients/serrano-chilli.md').includes('substitutions'));
-})();
+When('I reduce {string} to plain text', async function (markdown) {
+  await this.attempt(() => plainText(markdown));
 });
 
-Then("link adds ingredient links by name and alias and reports the rest", function () {
-  return (() => {
-  const recipe = SALAD.replace('1 bunch [coriander](/ingredients/coriander.md)', '1 bunch cilantro').replace('2 [spring onions](/ingredients/spring-onion.md)', '2 red onions').replace('- 2 red onions, sliced', '- 2 red onions, sliced\n- 1 lemon');
-  const root = makeRepo({ 'recipes/salads/herb-salad.md': recipe });
-  const result = linkRecipe(root, 'recipes/salads/herb-salad.md');
-  assert.deepEqual(result.linked, ['1 bunch [cilantro](/ingredients/coriander.md), leaves picked', '2 red [onions](/ingredients/onion.md), sliced']);
-  assert.deepEqual(result.unmatched, ['1 lemon']);
-  assert.match(read(root, 'recipes/salads/herb-salad.md'), /- 1 bunch \[cilantro\]\(\/ingredients\/coriander\.md\), leaves picked/);
-})();
+When('I slugify {string}', async function (name) {
+  await this.attempt(() => slugify(name));
 });
 
-Then("a page pinned to one data commit preloads its index and skips asking GitHub", function () {
-  return (() => {
-  const config = { title: 'R & D', description: '', repo: 'o/r', branch: 'main' };
-  const pinned = pageHtml(config, { data: 'https://cdn.jsdelivr.net/gh/o/r@abc/' });
-  assert.match(pinned, /<link rel="preload" href="https:\/\/cdn.jsdelivr.net\/gh\/o\/r@abc\/index.json" as="fetch" crossorigin>/);
-  assert.match(pinned, /"data":"https:\/\/cdn.jsdelivr.net\/gh\/o\/r@abc\/"/);
-  assert.match(pinned, /<title>R &amp; D<\/title>/);
-  const latest = pageHtml(config);
-  assert.doesNotMatch(latest, /rel="preload"/);
-  assert.match(latest, /"data":null/);
-})();
+When('I split the Markdown into sections:', async function (markdown) {
+  await this.attempt(() => splitSections(markdown).sections);
 });
 
-Then("a page given its data's hash names it, on the preload too", function () {
-  return (() => {
-  const config = { title: 'R', description: '', repo: 'o/r', branch: 'main' };
-  const hash = sri('{}');
-  const html = pageHtml(config, { data: 'https://cdn.jsdelivr.net/gh/o/r@abc/', dataIntegrity: hash });
-  assert.ok(html.includes(`index.json" as="fetch" crossorigin integrity="${hash}">`));
-  assert.ok(html.includes(`"dataIntegrity":"${hash}"`));
-  assert.match(pageHtml(config), /"dataIntegrity":null/);
-})();
-});
-
-Then("recipe-host page --index names the hash of that index.json in the page", function () {
-  return (() => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-page-'));
-  fs.writeFileSync(path.join(dir, 'index.json'), '{"recipes":[]}');
-  const bin = new URL('../bin/recipe-host.js', import.meta.url).pathname;
-  const root = new URL('./fixtures/repo', import.meta.url).pathname;
-  execFileSync(process.execPath, [bin, 'page', '--root', root, '--out', path.join(dir, 'index.html'), '--data', 'https://cdn.example/d/', '--index', path.join(dir, 'index.json')]);
-  const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
-  assert.ok(html.includes(`"dataIntegrity":"${sri('{"recipes":[]}')}"`));
-  fs.rmSync(dir, { recursive: true, force: true });
-})();
-});
-
-Then("the built index holds the integrity of every recipe file, and those files match it", function () {
-  return (() => {
-  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-host-build-'));
-  const repo = buildSite(new URL('./fixtures/repo', import.meta.url).pathname, out, { cards: false, log: () => {} });
-  assert.deepEqual(repo.errors, []);
-  const { integrity } = JSON.parse(fs.readFileSync(path.join(out, 'index.json'), 'utf8'));
-  assert.deepEqual(Object.keys(integrity).sort(), repo.recipes.map((r) => `recipes/${r.slug}.json`).sort());
-  for (const [file, hash] of Object.entries(integrity)) assert.equal(sri(fs.readFileSync(path.join(out, file))), hash, file);
-  fs.rmSync(out, { recursive: true, force: true });
-})();
-});
-
-Then("every library the page loads carries the integrity of the file its version ships", function () {
-  return (() => {
-  for (const [key, [name, version, file]] of Object.entries(ASSETS)) {
-    const installed = JSON.parse(fs.readFileSync(new URL(`../node_modules/${name}/package.json`, import.meta.url), 'utf8')).version;
-    assert.equal(installed, version, `ASSETS.${key} pins ${name}@${version} but package.json installs ${installed}`);
-    const hash = sri(fs.readFileSync(new URL(`../node_modules/${name}/${file}`, import.meta.url)));
-    assert.equal(INTEGRITY[key], hash, `INTEGRITY.${key} must be '${hash}', the hash of ${name}@${version}/${file}`);
-  }
-})();
-});
-
-Then("every script and stylesheet on the page names its integrity, the app itself included", function () {
-  return (() => {
-  const page = pageHtml({ title: 'R', description: '', repo: 'o/r', branch: 'main', login: { issuer: 'https://auth.example/x', client: 'c' }, favourites: 'https://store.example/' });
-  const tags = page.match(/<(script|link rel="stylesheet")[^>]* (src|href)="[^"]+"[^>]*>/g);
-  assert.equal(tags.length, 9);
-  for (const tag of tags) assert.match(tag, / integrity="sha384-[A-Za-z0-9+/]+={0,2}" crossorigin="anonymous"/, tag);
-  const app = sri(fs.readFileSync(new URL('../app/app.js', import.meta.url)));
-  assert.ok(page.includes(`app.js" integrity="${app}"`));
-  const style = sri(fs.readFileSync(new URL('../app/style.css', import.meta.url)));
-  assert.ok(page.includes(`style.css" integrity="${style}"`));
-})();
-});
-
-Then("a site with login loads the sign-in library and passes its settings to the page", function () {
-  return (() => {
-  const config = { title: 'R', description: '', repo: 'o/r', branch: 'main', login: { issuer: 'https://auth.example/realms/x', client: 'recipes', required: true }, favourites: 'https://store.example/' };
-  const page = pageHtml(config);
-  assert.match(page, /<script defer src="https:\/\/cdn.jsdelivr.net\/npm\/oidc-client-ts@3.5.0\/dist\/browser\/oidc-client-ts.min.js" integrity="sha384-[^"]+" crossorigin="anonymous"><\/script>/);
-  assert.match(page, /"login":\{"issuer":"https:\/\/auth.example\/realms\/x","client":"recipes","required":true\},"favourites":"https:\/\/store.example\/"/);
-  const preview = pageHtml(config, { login: { issuer: '/mock/x', client: 'recipes', required: false }, favourites: '/mock/presign/' });
-  assert.match(preview, /"issuer":"\/mock\/x"/);
-  const open = pageHtml({ ...config, login: null, favourites: null });
-  assert.doesNotMatch(open, /oidc-client-ts/);
-  assert.match(open, /"login":null,"favourites":null/);
-})();
-});
-
-Then("login settings in recipe-host.yml are read and checked", function () {
-  return (() => {
-  const good = loadRepo(makeRepo({ 'recipe-host.yml': 'login:\n  issuer: https://auth.sustenaut.eu/realms/sustenaut\n  client: recipes\n  required: true\nfavourites: https://presign.sustenaut.eu/\n' }));
-  assert.deepEqual(good.errors, []);
-  assert.deepEqual(good.config.login, { issuer: 'https://auth.sustenaut.eu/realms/sustenaut', client: 'recipes', required: true });
-  assert.equal(good.config.favourites, 'https://presign.sustenaut.eu/');
-  assert.equal(loadRepo(makeRepo()).config.login, null);
-  const bad = loadRepo(makeRepo({ 'recipe-host.yml': 'login:\n  issuer: http://auth.example\nfavourites: nowhere\n' }));
-  assert.equal(bad.errors.length, 3);
-  assert.match(bad.errors[0], /login.issuer must be the https:\/\/ address/);
-  assert.match(bad.errors[1], /login.client must name the client/);
-  assert.match(bad.errors[2], /favourites must be the https:\/\/ address/);
-  const alone = loadRepo(makeRepo({ 'recipe-host.yml': 'favourites: https://presign.sustenaut.eu/\n' }));
-  assert.match(alone.errors[0], /favourites needs login/);
-})();
-});
-
-Then("a session service for sign-in is read and checked", function () {
-  return (() => {
-  const good = loadRepo(makeRepo({ 'recipe-host.yml': 'login:\n  session: https://share.schryer.eu/recipes/v1/\n  required: true\n' }));
-  assert.deepEqual(good.errors, []);
-  assert.deepEqual(good.config.login, { session: 'https://share.schryer.eu/recipes/v1/', required: true });
-  const errors = (yml) => loadRepo(makeRepo({ 'recipe-host.yml': yml })).errors;
-  assert.match(errors('login:\n  session: http://share.example/\n')[0], /login.session must be the https:\/\/ address/);
-  assert.match(errors('login:\n  session: https://share.example/v1\n')[0], /ending in \//);
-  assert.match(errors('login:\n  session: https://share.example/\nfavourites: https://presign.example/\n')[0], /a session service keeps favourites itself/);
-  assert.match(errors('login:\n  session: https://share.example/\n  issuer: https://auth.example/\n  client: x\n')[0], /either session or issuer/);
-  const page = pageHtml({ title: 'R', description: '', repo: 'o/r', branch: 'main', login: good.config.login, favourites: null });
-  assert.doesNotMatch(page, /oidc-client-ts/);
-  assert.match(page, /"login":\{"session":"https:\/\/share.schryer.eu\/recipes\/v1\/","required":true\}/);
-})();
-});
-
-
-Then("the page carries an Open Graph card for link previews, with the site's own image if it names one", function () {
-  return (() => {
-  const config = loadRepo(makeRepo({ 'recipe-host.yml': 'title: Family <Recipes>\ndescription: Our food\nurl: https://recipes.example/\n' })).config;
-  const page = pageHtml(config, { engine: 'https://cdn.example/app/' });
-  assert.match(page, /<meta property="og:title" content="Family &lt;Recipes&gt;">/);
-  assert.match(page, /<meta property="og:description" content="Our food">/);
-  assert.match(page, /<meta property="og:url" content="https:\/\/recipes.example\/">/);
-  assert.match(page, /<meta property="og:image" content="https:\/\/cdn.example\/app\/social.png">/);
-  assert.match(page, /<meta property="og:image:width" content="1200">/);
-  assert.match(page, /<meta name="twitter:card" content="summary_large_image">/);
-  assert.ok(fs.existsSync(new URL('../app/social.png', import.meta.url)), 'app/social.png is missing');
-  const own = loadRepo(makeRepo({ 'recipe-host.yml': 'image: https://recipes.example/card.jpg\n' }));
-  assert.deepEqual(own.errors, []);
-  const ownPage = pageHtml(own.config);
-  assert.match(ownPage, /<meta property="og:image" content="https:\/\/recipes.example\/card.jpg">/);
-  assert.doesNotMatch(ownPage, /og:image:width|og:url/);
-  assert.match(loadRepo(makeRepo({ 'recipe-host.yml': 'image: photos/card.jpg\n' })).errors[0], /image must be the https:\/\/ address/);
-})();
-});
-
-Then("typst is found by absolute path, from $TYPST or else PATH, and never from a relative PATH entry", function () {
-  return (() => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typst-'));
-  const bin = path.join(dir, process.platform === 'win32' ? 'typst.exe' : 'typst');
-  fs.writeFileSync(bin, '');
-  fs.chmodSync(bin, 0o755);
-  assert.equal(typstPath({ PATH: ['relative', dir].join(path.delimiter) }), bin);
-  assert.equal(typstPath({ TYPST: bin, PATH: '' }), bin);
-  assert.equal(typstPath({ TYPST: 'typst', PATH: dir }), null);
-  assert.equal(typstPath({ PATH: 'relative' }), null);
-  fs.rmSync(dir, { recursive: true, force: true });
-})();
-});
-
-Then("the Markdown patterns keep their meaning and stay fast on hostile text", function () {
-  return (() => {
-  assert.deepEqual(splitSections('## Method ##\n1. Stir').sections, [{ title: 'Method', markdown: '1. Stir' }]);
-  assert.equal(plainText('a [b](c) ![d](e.jpg) [f [g](h)'), 'a b [f g');
-  assert.equal(slugify(' -Crème  brûlée- '), 'creme-brulee');
-  assert.deepEqual(parseIngredientLine('[a [garlic](/ingredients/garlic.md)').refs.map((r) => r.id), ['garlic']);
-  assert.deepEqual(readRequest('Hi\r\n```recipe-host\r\n{"action":"add"}\r\n```\r\n'), { action: 'add' });
-  assert.equal(readRequest('```recipe-host\n{"action":"add"}'), null);
-
-  const recipe = parseRecipe('recipes/x/y.md', `---\ntitle: Y\nsubtitle: Z\ntags: [t]\ndate: 2026-10-20\nserves: 1\n---\n## Ingredients\n- 1 [egg](/ingredients/egg.md)\n## Method\n1. **Whisk.**   Beat it\n2. Cook`);
-  assert.deepEqual(recipe.steps.map((s) => [s.name, s.markdown]), [['Whisk', 'Beat it'], [null, 'Cook']]);
-
+When('I run each Markdown pattern on hostile text 20000 long', async function () {
   const started = Date.now();
-  plainText('[a]('.repeat(20000));
-  parseIngredientLine('[a'.repeat(20000));
-  splitSections(`## ${'#'.repeat(20000)}x`);
-  assert.throws(() => readRequest('```recipe-host\n'.repeat(5000)), RequestError);
-  assert.ok(Date.now() - started < 1000, 'the patterns took over a second on long input');
-})();
+  await this.attempt(() => {
+    plainText('[a]('.repeat(20000));
+    parseIngredientLine('[a'.repeat(20000));
+    splitSections(`## ${'#'.repeat(20000)}x`);
+    try { readRequest('```recipe-host\n'.repeat(5000)); } catch { /* refused, as a scenario checks */ }
+  });
+  this.took = Date.now() - started;
+});
+
+Then('it took less than {int} ms', function (ms) {
+  if (!(this.took < ms)) throw new Error(`it took ${this.took} ms`);
+});
+
+Then('the refusal is a {word}', function (name) {
+  this.pubtest.refusalRead = true;
+  const error = this.pubtest.refused?.error;
+  if (error?.constructor?.name !== name) throw new Error(`the refusal is ${error?.constructor?.name ?? 'none'}: ${error?.message}`);
 });
